@@ -137,6 +137,18 @@
   .shapecell svg{display:block;height:30px;width:auto;flex:0 0 auto}
   .shapecell b{font:600 9px/1.2 var(--mono);letter-spacing:.04em}
 
+  /* ---------- cage ---------- */
+  #cagewrap{position:relative;background:var(--paper);border:1px solid var(--rule);
+    height:min(58vh,430px);overflow:hidden}
+  #cagecanvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+  #cagecanvas:active{cursor:grabbing}
+  #cagenote{position:absolute;left:12px;bottom:10px;right:12px;pointer-events:none;
+    font:500 8.5px/1.6 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--steel)}
+  #cagekey{position:absolute;right:12px;top:11px;text-align:right;pointer-events:none;
+    font:500 8.5px/1.8 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--steel)}
+  #cagekey b{color:var(--accent)}
+  #cagemembers button{min-width:54px}
+
   /* ---------- title block ---------- */
   #titleblock{display:grid;grid-template-columns:1fr 148px;border:1px solid var(--ink);
     background:var(--paper);margin-bottom:10px}
@@ -187,6 +199,8 @@
     td .cut{border-bottom:0}
     .sec{padding:0 0 10px;break-inside:auto}
     #titleblock{margin-bottom:8px;break-inside:avoid}
+    #cagewrap{height:72mm;break-inside:avoid;border:1px solid var(--ink)}
+    #cagecanvas{max-width:100%}
     .tablewrap{border:1px solid var(--ink);overflow:visible}
     table{font-size:7.6pt}
     th{padding:5px 6px}
@@ -221,6 +235,23 @@
 <div class="sec" id="memhead">
   <div class="sechead"><h2>Members</h2><i></i><u id="memcount"></u></div>
   <div id="members"></div>
+</div>
+
+<div class="sec" id="cagesec">
+  <div class="sechead"><h2>Cage</h2><i></i><u id="cagehint">drag to orbit · scroll to zoom</u></div>
+  <div class="tabs noprint" id="cagemembers"></div>
+  <div class="tabs noprint" id="cageviews">
+    <button data-v="iso" class="on">Iso</button>
+    <button data-v="elev">Elevation</button>
+    <button data-v="section">Section</button>
+    <button data-v="plan">Plan</button>
+    <button data-v="concrete" id="btnConcrete" class="on">Concrete</button>
+  </div>
+  <div id="cagewrap">
+    <canvas id="cagecanvas"></canvas>
+    <div id="cagekey"></div>
+    <div id="cagenote"></div>
+  </div>
 </div>
 
 <div class="sec" id="warnsec">
@@ -350,6 +381,17 @@ const CODE = {
     congestionAppliesTo: ['beam', 'lintel', 'column'],
     lapZoneAppliesTo: ['beam', 'lintel', 'slabOneWay', 'slabTwoWay', 'staircase'],
     lapAvoidZone: { bottom: 'midSpan', top: 'support' }
+  },
+
+  /* ---- cage depiction ----------------------------------------------
+     How the 3D cage is DRAWN. None of these touch a cutting length or a
+     weight; they only decide how much of the cage is worth putting on
+     screen. Kept here so nothing is buried at a call site.
+     ------------------------------------------------------------------ */
+  cage: {
+    hookStandoffDia: 3,      // × d, how far a drawn hook stands off the bar
+    circleSegments: 24,      // facets in a drawn circular tie
+    maxRings: 60             // stirrups drawn per member before thinning
   },
 
   units: { mmPerM: 1000, mm3PerM3: 1e9, kgPerTonne: 1000, percent: 100 }
@@ -873,6 +915,263 @@ function sketchFor(shape, g) {
 }
 
 /* ---------------------------------------------------------------------
+   CAGE — the reinforcement laid out in three dimensions, member-local,
+   in millimetres. x runs along the member, y is up, z is across.
+
+   Pure data: point lists and face indices, no canvas and no colour. The
+   viewer owns every pixel. Bar lengths here are the geometric runs — the
+   schedule's cutting lengths remain the only quantities that are ordered.
+   ------------------------------------------------------------------- */
+function spread(n, lo, hi) {
+  if (n <= 1) return [(lo + hi) / 2];
+  const out = [], step = (hi - lo) / (n - 1);
+  for (let i = 0; i < n; i++) out.push(lo + i * step);
+  return out;
+}
+
+/* n points walked evenly round a rectangle, starting at a corner */
+function perimeterPoints(n, a0, a1, b0, b1) {
+  const w = a1 - a0, d = b1 - b0, per = 2 * (w + d), out = [];
+  for (let i = 0; i < n; i++) {
+    const s = (i / n) * per;
+    if (s < w) out.push([a0 + s, b0]);
+    else if (s < w + d) out.push([a1, b0 + (s - w)]);
+    else if (s < 2 * w + d) out.push([a1 - (s - w - d), b1]);
+    else out.push([a0, b1 - (s - 2 * w - d)]);
+  }
+  return out;
+}
+
+/* one longitudinal bar, run along +x from u0, at height y and offset z */
+function longBar(u0, lenMm, y, z, o) {
+  const r = o.dia * CODE.cage.hookStandoffDia;
+  const u1 = u0 + lenMm;
+  function cap(u, dir) {
+    if (o.end === 'hook')
+      return [[u + dir * o.hookMm, y + r, z], [u + dir * r * 0.5, y + r, z],
+              [u, y + r * 0.6, z], [u, y, z]];
+    if (o.end === 'bend') return [[u, y + o.legMm, z], [u, y, z]];
+    return [[u, y, z]];
+  }
+  if (o.cranks > 0 && o.DMm > 0) {
+    const D = o.DMm, c = Math.max(0, Math.min(lenMm / 6, lenMm / 2 - D));
+    return [[u0, y + D, z], [u0 + c, y + D, z], [u0 + c + D, y, z],
+            [u1 - c - D, y, z], [u1 - c, y + D, z], [u1, y + D, z]];
+  }
+  return cap(u0, 1).concat(cap(u1, -1).reverse());
+}
+
+function swapXZ(path) { return path.map(function (p) { return [p[2], p[1], p[0]]; }); }
+function swapXY(path) { return path.map(function (p) { return [p[1], p[0], p[2]]; }); }
+
+/* a closed tie or stirrup in the plane perpendicular to `axis` */
+function ring(pos, shape, g, axis, tailMm) {
+  const P = axis === 'y'
+    ? function (a, b) { return [a, pos, b]; }
+    : function (a, b) { return [pos, a, b]; };
+  const a0 = g.a0, a1 = g.a1, b0 = g.b0, b1 = g.b1;
+  const t = Math.min(tailMm, Math.abs(a1 - a0) * 0.3, Math.abs(b1 - b0) * 0.3);
+  let loop;
+  if (shape === 'STIRRUP_CIRC') {
+    const ca = (a0 + a1) / 2, cb = (b0 + b1) / 2, r = Math.min(a1 - a0, b1 - b0) / 2;
+    loop = [];
+    for (let i = 0; i <= CODE.cage.circleSegments; i++) {
+      const th = i / CODE.cage.circleSegments * 2 * Math.PI;
+      loop.push(P(ca + r * Math.cos(th), cb + r * Math.sin(th)));
+    }
+  } else if (shape === 'STIRRUP_TRI') {
+    loop = [P(a0, b0), P(a0, b1), P(a1, (b0 + b1) / 2), P(a0, b0)];
+  } else if (shape === 'STIRRUP_DIA') {
+    const ma = (a0 + a1) / 2, mb = (b0 + b1) / 2;
+    loop = [P(ma, b0), P(a1, mb), P(ma, b1), P(a0, mb), P(ma, b0)];
+  } else {
+    loop = [P(a0, b0), P(a0, b1), P(a1, b1), P(a1, b0), P(a0, b0)];
+  }
+  return [loop, [P(a0, b0), P(a0 + t, b0 + t)]];
+}
+
+function boxSolid(L, H, W) {
+  return {
+    verts: [[0,0,0],[L,0,0],[L,H,0],[0,H,0],[0,0,W],[L,0,W],[L,H,W],[0,H,W]],
+    faces: [[0,1,2,3],[4,5,6,7],[0,1,5,4],[3,2,6,7],[0,3,7,4],[1,2,6,5]]
+  };
+}
+
+/* a side profile in (x, y) extruded across z */
+function prismSolid(profile, W) {
+  const n = profile.length, verts = [], faces = [];
+  profile.forEach(function (p) { verts.push([p[0], p[1], 0]); });
+  profile.forEach(function (p) { verts.push([p[0], p[1], W]); });
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    faces.push([i, j, j + n, i + n]);
+  }
+  const capA = [], capB = [];
+  for (let i = 0; i < n; i++) { capA.push(i); capB.push(n + n - 1 - i); }
+  faces.push(capA, capB);
+  return { verts: verts, faces: faces };
+}
+
+/* stirrup positions, thinned to a drawable number — depiction only, the
+   schedule count is untouched and the thinning is reported */
+function ringPositions(count, lo, hi) {
+  const max = CODE.cage.maxRings;
+  if (count <= max) return { at: spread(count, lo, hi), thinned: false };
+  return { at: spread(max, lo, hi), thinned: true };
+}
+
+const CAGES = {
+  /* box members: longitudinal bars either way, rings along the run */
+  box: function (m, rows, L, H, W, ds) {
+    const c = m.coverMm, bars = [];
+    let thinned = false;
+    rows.forEach(function (row) {
+      const d = row.dia;
+      if (row.position === 'stirrup') {
+        const p = ringPositions(row.barsPerMember, c, L - c);
+        thinned = thinned || p.thinned;
+        p.at.forEach(function (x) {
+          ring(x, row.shape, { a0: c, a1: H - c, b0: c, b1: W - c }, 'x',
+               row.sketch.hookMm || d * 6).forEach(function (path) {
+            bars.push({ mark: row.mark, dia: d, kind: 'ring', path: path });
+          });
+        });
+        return;
+      }
+      const b = row._bar || {}, alongZ = (b.along === 'width');
+      const inset = c + ds + d / 2;
+      const y = b.position === 'top' ? H - inset : c + d / 2 + (alongZ ? d : 0);
+      const runLen = (alongZ ? W : L) - 2 * c;
+      // bars sit inside the stirrup across the section as well as up it
+      const across = spread(row.barsPerMember, inset, (alongZ ? L : W) - inset);
+      const o = { dia: d, end: b.end || 'continuous',
+                  hookMm: row.sketch.hookMm || 0, legMm: row.sketch.legMm || 0,
+                  cranks: row.sketch.cranks || 0, DMm: row.sketch.crankMm || 0 };
+      across.forEach(function (t) {
+        const p = longBar(c, runLen, y, t, o);
+        bars.push({ mark: row.mark, dia: d, kind: 'long', path: alongZ ? swapXZ(p) : p });
+      });
+    });
+    return { solid: boxSolid(L, H, W), bars: bars, thinned: thinned,
+             bounds: { min: [0, 0, 0], max: [L, H, W] } };
+  },
+
+  /* column: the run is vertical, so the bars and ties are rotated up */
+  column: function (m, rows, ds) {
+    const c = m.coverMm, X = m.concrete.widthMm, Z = m.concrete.depthMm, Hh = m.concrete.heightMm;
+    const bars = [];
+    let thinned = false;
+    rows.forEach(function (row) {
+      const d = row.dia;
+      if (row.position === 'stirrup') {
+        const p = ringPositions(row.barsPerMember, c, Hh - c);
+        thinned = thinned || p.thinned;
+        p.at.forEach(function (y) {
+          ring(y, row.shape, { a0: c, a1: X - c, b0: c, b1: Z - c }, 'y',
+               row.sketch.hookMm || d * 6).forEach(function (path) {
+            bars.push({ mark: row.mark, dia: d, kind: 'ring', path: path });
+          });
+        });
+        return;
+      }
+      const b = row._bar || {}, inset = c + ds + d / 2;
+      const o = { dia: d, end: b.end || 'continuous',
+                  hookMm: row.sketch.hookMm || 0, legMm: row.sketch.legMm || 0,
+                  cranks: 0, DMm: 0 };
+      perimeterPoints(row.barsPerMember, inset, X - inset, inset, Z - inset)
+        .forEach(function (pt) {
+          bars.push({ mark: row.mark, dia: d, kind: 'long',
+                      path: swapXY(longBar(c, Hh - 2 * c, pt[0], pt[1], o)) });
+        });
+    });
+    return { solid: boxSolid(X, Hh, Z), bars: bars, thinned: thinned,
+             bounds: { min: [0, 0, 0], max: [X, Hh, Z] } };
+  },
+
+  /* staircase: a stepped profile extruded across the flight width, with
+     the main steel following the soffit */
+  staircase: function (m, rows) {
+    const cc = m.concrete, c = m.coverMm;
+    const R = cc.riserMm, T = cc.treadMm, n = cc.treads, wa = cc.waistMm, W = cc.widthMm;
+    const LA = cc.landingAMm || 0, LB = cc.landingBMm || 0;
+    const top = [[0, 0], [LA, 0]];
+    for (let i = 0; i < n; i++) {
+      top.push([LA + i * T, (i + 1) * R]);
+      top.push([LA + (i + 1) * T, (i + 1) * R]);
+    }
+    const endX = LA + n * T + LB, endY = n * R;
+    top.push([endX, endY]);
+    const profile = top.concat([[endX, endY - wa], [LA + n * T, endY - wa], [LA, -wa], [0, -wa]]);
+
+    /* the soffit line, lifted by cover, is the path the main bars follow */
+    const yA = -wa + c, yB = endY - wa + c;
+    const soffit = [[0, yA], [LA, yA], [LA + n * T, yB], [endX, yB]];
+    const bars = [];
+    rows.forEach(function (row) {
+      const b = row._bar || {}, d = row.dia;
+      if (b.along === 'width') {
+        /* distribution bars run across the flight, spaced along the soffit */
+        const at = spread(row.barsPerMember, 0.02, 0.98);
+        at.forEach(function (t) {
+          const p = alongPolyline(soffit, t);
+          bars.push({ mark: row.mark, dia: d, kind: 'long',
+                      path: [[p[0], p[1] + d, c], [p[0], p[1] + d, W - c]] });
+        });
+        return;
+      }
+      const leg = row.sketch.legMm || 0;
+      spread(row.barsPerMember, c, W - c).forEach(function (z) {
+        const path = soffit.map(function (p) { return [p[0], p[1] + d / 2, z]; });
+        if (b.end === 'bend' && leg > 0) {
+          path.unshift([soffit[0][0], soffit[0][1] + leg, z]);
+          path.push([endX, yB + leg, z]);
+        }
+        bars.push({ mark: row.mark, dia: d, kind: 'long', path: path });
+      });
+    });
+    const ys = profile.map(function (p) { return p[1]; });
+    return { solid: prismSolid(profile, W), bars: bars, thinned: false,
+             bounds: { min: [0, Math.min.apply(null, ys), 0],
+                       max: [endX, Math.max.apply(null, ys), W] } };
+  }
+};
+
+/* point at fraction t along a polyline given as [x, y] pairs */
+function alongPolyline(pts, t) {
+  let total = 0;
+  const segs = [];
+  for (let i = 1; i < pts.length; i++) {
+    const l = Math.hypot(pts[i][0] - pts[i-1][0], pts[i][1] - pts[i-1][1]);
+    segs.push(l); total += l;
+  }
+  let want = t * total;
+  for (let i = 0; i < segs.length; i++) {
+    if (want <= segs[i] || i === segs.length - 1) {
+      const f = segs[i] ? want / segs[i] : 0;
+      return [pts[i][0] + (pts[i+1][0] - pts[i][0]) * f,
+              pts[i][1] + (pts[i+1][1] - pts[i][1]) * f];
+    }
+    want -= segs[i];
+  }
+  return pts[0];
+}
+
+function cageFor(member, rows, geom) {
+  const ds = member.stirrups
+    ? (Array.isArray(member.stirrups) ? member.stirrups[0].dia : member.stirrups.dia)
+    : 0;
+  const cc = member.concrete;
+  switch (member.type) {
+    case 'column':    return CAGES.column(member, rows, ds);
+    case 'staircase': return CAGES.staircase(member, rows);
+    case 'beam':      return CAGES.box(member, rows, cc.spanMm, cc.depthMm, cc.widthMm, ds);
+    case 'lintel':    return CAGES.box(member, rows, geom.overall(member), cc.depthMm, cc.widthMm, ds);
+    case 'footing':   return CAGES.box(member, rows, cc.lengthMm, cc.depthMm, cc.widthMm, ds);
+    default:          return CAGES.box(member, rows, cc.lengthMm, cc.thicknessMm, cc.widthMm, ds);
+  }
+}
+
+/* ---------------------------------------------------------------------
    CHECKS — every one surfaces as a warning. Nothing throws, nothing is
    silently corrected, no threshold is bent to keep a job quiet.
    ------------------------------------------------------------------- */
@@ -1063,7 +1362,8 @@ function generate(job) {
       concreteM3PerMember: round(volPer, 4),
       concreteM3Total: round(volTot, 4),
       steelPerM3: round(ratio, 2),
-      unverifiedFields: countUnverified(raw.provenance)
+      unverifiedFields: countUnverified(raw.provenance),
+      cage: cageFor(member, rows, geom)
     });
   });
 
@@ -1467,6 +1767,250 @@ function shapeSVG(row, full){
 }
 
 /* ------------------------------------------------------------------ */
+/* CAGE — 3D reinforcement view.                                       */
+/* A small camera and a painter's-algorithm renderer on a 2D canvas.   */
+/* No third-party library: the file has to open with no network.       */
+/* The engine supplies the geometry; nothing here computes a length.   */
+/* ------------------------------------------------------------------ */
+var CG = { theta:-0.72, phi:1.04, radius:1, zoom:1, target:[0,0,0],
+           view:'iso', ortho:false, member:0, concrete:true, w:0, h:0 };
+
+function sub(a,b){ return [a[0]-b[0],a[1]-b[1],a[2]-b[2]]; }
+function dot(a,b){ return a[0]*b[0]+a[1]*b[1]+a[2]*b[2]; }
+function cross(a,b){ return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]; }
+function norm(a){ var l=Math.hypot(a[0],a[1],a[2])||1; return [a[0]/l,a[1]/l,a[2]/l]; }
+function mid(pts){
+  var s=[0,0,0];
+  pts.forEach(function(p){ s[0]+=p[0]; s[1]+=p[1]; s[2]+=p[2]; });
+  return [s[0]/pts.length, s[1]/pts.length, s[2]/pts.length];
+}
+
+function cageOf(){
+  if (!state.out || !state.out.members.length) return null;
+  CG.member = Math.min(CG.member, state.out.members.length-1);
+  return state.out.members[CG.member];
+}
+
+function cageFrame(){
+  var m = cageOf(); if (!m || !m.cage) return;
+  var lo = m.cage.bounds.min, hi = m.cage.bounds.max;
+  CG.target = [(lo[0]+hi[0])/2,(lo[1]+hi[1])/2,(lo[2]+hi[2])/2];
+  CG.span = Math.max(hi[0]-lo[0], hi[1]-lo[1], hi[2]-lo[2], 1);
+  CG.radius = CG.span * 1.85;
+  CG.zoom = 1;
+}
+
+function camBasis(){
+  var t=CG.target, R=CG.radius, ph=CG.phi, th=CG.theta;
+  var eye=[t[0]+R*Math.sin(ph)*Math.sin(th), t[1]+R*Math.cos(ph), t[2]+R*Math.sin(ph)*Math.cos(th)];
+  var f=norm(sub(t,eye));
+  var up = Math.abs(f[1])>0.999 ? [0,0,-1] : [0,1,0];
+  var r=norm(cross(f,up));
+  return { eye:eye, f:f, r:r, u:cross(r,f) };
+}
+
+/* fit the concrete's eight corners to the frame — used for the
+   orthographic elevation, section and plan */
+function fitScale(B){
+  var m=cageOf(); if(!m) return 1;
+  var lo=m.cage.bounds.min, hi=m.cage.bounds.max, ex=0, ey=0;
+  for (var i=0;i<8;i++){
+    var d=sub([(i&1)?hi[0]:lo[0], (i&2)?hi[1]:lo[1], (i&4)?hi[2]:lo[2]], B.eye);
+    ex=Math.max(ex,Math.abs(dot(d,B.r))); ey=Math.max(ey,Math.abs(dot(d,B.u)));
+  }
+  return Math.min(CG.w*0.44/(ex||1), CG.h*0.42/(ey||1)) * CG.zoom;
+}
+
+function makeProject(B, scale){
+  var focal = (CG.h/2)/Math.tan(0.33);
+  return function(p){
+    var d=sub(p,B.eye);
+    var x=dot(d,B.r), y=dot(d,B.u), z=dot(d,B.f);
+    if (CG.ortho) return [CG.w/2 + x*scale, CG.h/2 - y*scale, z, scale];
+    if (z < CG.span*0.05) return null;
+    return [CG.w/2 + focal*x/z, CG.h/2 - focal*y/z, z, focal/z];
+  };
+}
+
+function setView(v){
+  CG.view = v;
+  if (v==='iso')     { CG.theta=-0.72; CG.phi=1.04;          CG.ortho=false; }
+  if (v==='elev')    { CG.theta=0;     CG.phi=Math.PI/2;     CG.ortho=true;  }
+  if (v==='section') { CG.theta=Math.PI/2; CG.phi=Math.PI/2; CG.ortho=true;  }
+  if (v==='plan')    { CG.theta=Math.PI;   CG.phi=0.004;     CG.ortho=true;  }
+  cageFrame(); cageDraw();
+}
+
+function cageSize(){
+  var cvs=$('#cagecanvas'), box=$('#cagewrap');
+  if (!cvs||!box) return;
+  var dpr=Math.min(window.devicePixelRatio||1, 2);
+  CG.w=box.clientWidth; CG.h=box.clientHeight;
+  cvs.width=Math.round(CG.w*dpr); cvs.height=Math.round(CG.h*dpr);
+  CG.ctx=cvs.getContext('2d');
+  CG.ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+
+function cageDraw(){
+  var m=cageOf();
+  if (!CG.ctx || !m || !m.cage){ return; }
+  var c=m.cage, ctx=CG.ctx, W=CG.w, H=CG.h;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#fff'; ctx.fillRect(0,0,W,H);
+
+  var B=camBasis(), scale=CG.ortho?fitScale(B):0, P=makeProject(B,scale);
+  var centroid=mid(c.solid.verts);
+
+  /* ---- ground grid, so an orbit has something to read against ---- */
+  if (!CG.ortho){
+    var lo=c.bounds.min, hi=c.bounds.max, pad=CG.span*0.28, y=lo[1];
+    ctx.strokeStyle='rgba(182,188,185,.55)'; ctx.lineWidth=1;
+    var steps=6;
+    for (var g=0; g<=steps; g++){
+      var fx=lo[0]-pad+(hi[0]-lo[0]+pad*2)*g/steps;
+      var fz=lo[2]-pad+(hi[2]-lo[2]+pad*2)*g/steps;
+      seg(P([fx,y,lo[2]-pad]), P([fx,y,hi[2]+pad]));
+      seg(P([lo[0]-pad,y,fz]), P([hi[0]+pad,y,fz]));
+    }
+  }
+  function seg(a,b){
+    if(!a||!b) return;
+    ctx.beginPath(); ctx.moveTo(a[0],a[1]); ctx.lineTo(b[0],b[1]); ctx.stroke();
+  }
+
+  /* ---- concrete, split into the faces behind the steel and in front -- */
+  var back=[], front=[];
+  if (CG.concrete) c.solid.faces.forEach(function(f){
+    var vs=f.map(function(i){ return c.solid.verts[i]; });
+    var cen=mid(vs), pts=vs.map(P);
+    if (pts.some(function(p){ return !p; })) return;
+    (dot(sub(cen,centroid), sub(B.eye,cen)) > 0 ? front : back).push(pts);
+  });
+  function paint(list, fill){
+    ctx.fillStyle=fill; ctx.strokeStyle='rgba(20,23,26,.16)'; ctx.lineWidth=1;
+    list.forEach(function(pts){
+      ctx.beginPath(); ctx.moveTo(pts[0][0],pts[0][1]);
+      for (var i=1;i<pts.length;i++) ctx.lineTo(pts[i][0],pts[i][1]);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+    });
+  }
+  paint(back, 'rgba(20,23,26,.07)');
+
+  /* ---- the steel, far segments first ---- */
+  var dim = state.open ? 0.22 : 1;
+  var segs=[];
+  c.bars.forEach(function(b){
+    var hot = state.open === b.mark;
+    for (var i=1;i<b.path.length;i++){
+      var a=P(b.path[i-1]), q=P(b.path[i]);
+      if(!a||!q) continue;
+      segs.push({a:a, q:q, z:(a[2]+q[2])/2, dia:b.dia, ring:b.kind==='ring', hot:hot});
+    }
+  });
+  segs.sort(function(x,y){ return y.z-x.z; });
+  ctx.lineCap='round'; ctx.lineJoin='round';
+  segs.forEach(function(s){
+    var px=Math.max(1.1, Math.min(15, s.dia*(s.a[3]+s.q[3])/2));
+    var a = s.hot ? 1 : dim*(s.ring?0.78:0.95);
+    ctx.lineWidth = s.hot ? px+1.4 : px;
+    ctx.strokeStyle = s.ring ? 'rgba(20,23,26,'+a+')' : 'rgba(224,123,30,'+a+')';
+    ctx.beginPath(); ctx.moveTo(s.a[0],s.a[1]); ctx.lineTo(s.q[0],s.q[1]); ctx.stroke();
+  });
+
+  paint(front, 'rgba(20,23,26,.035)');
+
+  /* ---- concrete arrises last, hairline, so the box always reads ---- */
+  if (CG.concrete){
+    ctx.strokeStyle='rgba(20,23,26,.42)'; ctx.lineWidth=1;
+    var drawn={};
+    c.solid.faces.forEach(function(f){
+      for (var i=0;i<f.length;i++){
+        var a=f[i], b=f[(i+1)%f.length], k=Math.min(a,b)+':'+Math.max(a,b);
+        if (drawn[k]) continue;
+        drawn[k]=1;
+        seg(P(c.solid.verts[a]), P(c.solid.verts[b]));
+      }
+    });
+  }
+
+  /* ---- overlays ---- */
+  var open = state.open ? state.out.schedule.filter(function(r){ return r.mark===state.open; })[0] : null;
+  $('#cagekey').innerHTML = open
+    ? '<b>' + esc(open.mark) + '</b> highlighted<br>' + esc(open.label) + '<br>Ø' + open.dia +
+      ' mm · ' + open.barsPerMember + ' off'
+    : '<b>Longitudinal</b><br>Stirrups &amp; ties<br>' + (CG.concrete?'Concrete':'Concrete hidden');
+  var thin = c.thinned ? ' · drawing every ' + CODE.cage.maxRings + 'th tie of ' +
+             m.rows.reduce(function(s,r){ return s + (r.position==='stirrup'?r.barsPerMember:0); },0) : '';
+  $('#cagenote').textContent = m.id + ' · ' + m.label + ' · ' +
+    Math.round(c.bounds.max[0]) + ' × ' + Math.round(c.bounds.max[1]) + ' × ' +
+    Math.round(c.bounds.max[2]) + ' mm · ' + CG.view + thin;
+}
+
+function renderCageTabs(){
+  if (!state.out) return;
+  $('#cagemembers').innerHTML = state.out.members.map(function(m,i){
+    return '<button data-m="'+i+'"'+(i===CG.member?' class="on"':'')+'>'+esc(m.id)+'</button>';
+  }).join('');
+}
+
+function cageInit(){
+  var cvs=$('#cagecanvas');
+  cageSize();
+  var pts=new Map(), lastPinch=0;
+  cvs.addEventListener('pointerdown', function(e){
+    cvs.setPointerCapture(e.pointerId); pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  });
+  cvs.addEventListener('pointermove', function(e){
+    if (!pts.has(e.pointerId)) return;
+    var p=pts.get(e.pointerId), dx=e.clientX-p.x, dy=e.clientY-p.y;
+    p.x=e.clientX; p.y=e.clientY;
+    if (pts.size===1){
+      CG.theta -= dx*0.007;
+      CG.phi = Math.min(Math.PI-0.05, Math.max(0.05, CG.phi - dy*0.006));
+      CG.ortho = false;                       // orbiting leaves a preset view
+      CG.view = 'orbit';
+    } else {
+      var a=Array.from(pts.values()), d=Math.hypot(a[0].x-a[1].x, a[0].y-a[1].y);
+      if (lastPinch) zoomBy(1 - (d-lastPinch)*0.004);
+      lastPinch=d;
+    }
+    cageDraw();
+  });
+  ['pointerup','pointercancel','pointerleave'].forEach(function(ev){
+    cvs.addEventListener(ev, function(e){ pts.delete(e.pointerId); if(pts.size<2) lastPinch=0; });
+  });
+  cvs.addEventListener('wheel', function(e){
+    e.preventDefault(); zoomBy(1 + e.deltaY*0.0012); cageDraw();
+  }, {passive:false});
+
+  function zoomBy(f){
+    if (CG.ortho) CG.zoom = Math.min(6, Math.max(0.25, CG.zoom / f));
+    else CG.radius = Math.min(CG.span*8, Math.max(CG.span*0.5, CG.radius * f));
+  }
+
+  $('#cageviews').addEventListener('click', function(e){
+    var b=e.target.closest('button'); if(!b) return;
+    if (b.dataset.v === 'concrete'){
+      CG.concrete = !CG.concrete;
+      b.classList.toggle('on', CG.concrete);
+      cageDraw(); return;
+    }
+    Array.prototype.forEach.call($('#cageviews').children, function(x){
+      if (x.dataset.v !== 'concrete') x.classList.toggle('on', x===b);
+    });
+    setView(b.dataset.v);
+  });
+  $('#cagemembers').addEventListener('click', function(e){
+    var b=e.target.closest('button'); if(!b) return;
+    CG.member = +b.dataset.m; renderCageTabs(); cageFrame(); cageDraw();
+  });
+
+  window.addEventListener('resize', function(){ cageSize(); cageDraw(); });
+  window.addEventListener('beforeprint', function(){ cageSize(); cageDraw(); });
+  window.addEventListener('afterprint', function(){ cageSize(); cageDraw(); });
+}
+
+/* ------------------------------------------------------------------ */
 /* MEMBER EDITOR                                                       */
 /* ------------------------------------------------------------------ */
 function fnum(path, label, val, step){
@@ -1814,8 +2358,14 @@ function copyTSV(){
 /* WIRING                                                              */
 /* ------------------------------------------------------------------ */
 function recalc(){
+  var wasMember = state.out ? (state.out.members[CG.member]||{}).id : null;
   state.out = generate(jobFromState());
   renderReadout(); renderWarnings(); renderSchedule(); renderSummary(); renderTitleBlock();
+  renderCageTabs();
+  // reframe only when the cage is showing a different member than before
+  var nowMember = (state.out.members[CG.member]||{}).id;
+  if (nowMember !== wasMember) cageFrame();
+  cageDraw();
   var s = state.out.summary;
   $('#barnote').textContent = s.marks + ' marks · ' + n2(s.grossKg) + ' kg to order' +
     (state.out.warnings.length ? ' · ' + state.out.warnings.length + ' check(s) to review' : '');
@@ -1904,6 +2454,7 @@ $('#sched').addEventListener('click', function(e){
   if (!tr) return;
   state.open = (state.open === tr.dataset.mark) ? null : tr.dataset.mark;
   renderSchedule();
+  syncCageToOpenMark();
 });
 $('#sched').addEventListener('keydown', function(e){
   if (e.key !== 'Enter' && e.key !== ' ') return;
@@ -1912,6 +2463,7 @@ $('#sched').addEventListener('keydown', function(e){
   e.preventDefault();
   state.open = (state.open === tr.dataset.mark) ? null : tr.dataset.mark;
   renderSchedule();
+  syncCageToOpenMark();
 });
 
 Array.prototype.forEach.call($('#grouptabs').children, function(b){
@@ -1930,8 +2482,22 @@ Array.prototype.forEach.call($('#grouptabs').children, function(b){
 $('#btnTsv').addEventListener('click', copyTSV);
 $('#btnPrint').addEventListener('click', function(){ window.print(); });
 
+/* opening a schedule row highlights that mark in the cage, switching the
+   cage to that row's member if it is showing a different one */
+function syncCageToOpenMark(){
+  if (state.open){
+    var i = state.out.members.findIndex(function(m){
+      return m.rows.some(function(r){ return r.mark === state.open; });
+    });
+    if (i >= 0 && i !== CG.member){ CG.member = i; renderCageTabs(); cageFrame(); }
+  }
+  cageDraw();
+}
+
 $('#pDate').value = new Date().toISOString().slice(0,10);
+cageInit();
 rerender();
+setView('iso');
 })();
 </script>
 </body>

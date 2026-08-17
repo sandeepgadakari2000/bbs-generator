@@ -88,6 +88,17 @@ const CODE = {
     lapAvoidZone: { bottom: 'midSpan', top: 'support' }
   },
 
+  /* ---- cage depiction ----------------------------------------------
+     How the 3D cage is DRAWN. None of these touch a cutting length or a
+     weight; they only decide how much of the cage is worth putting on
+     screen. Kept here so nothing is buried at a call site.
+     ------------------------------------------------------------------ */
+  cage: {
+    hookStandoffDia: 3,      // × d, how far a drawn hook stands off the bar
+    circleSegments: 24,      // facets in a drawn circular tie
+    maxRings: 60             // stirrups drawn per member before thinning
+  },
+
   units: { mmPerM: 1000, mm3PerM3: 1e9, kgPerTonne: 1000, percent: 100 }
 };
 
@@ -609,6 +620,263 @@ function sketchFor(shape, g) {
 }
 
 /* ---------------------------------------------------------------------
+   CAGE — the reinforcement laid out in three dimensions, member-local,
+   in millimetres. x runs along the member, y is up, z is across.
+
+   Pure data: point lists and face indices, no canvas and no colour. The
+   viewer owns every pixel. Bar lengths here are the geometric runs — the
+   schedule's cutting lengths remain the only quantities that are ordered.
+   ------------------------------------------------------------------- */
+function spread(n, lo, hi) {
+  if (n <= 1) return [(lo + hi) / 2];
+  const out = [], step = (hi - lo) / (n - 1);
+  for (let i = 0; i < n; i++) out.push(lo + i * step);
+  return out;
+}
+
+/* n points walked evenly round a rectangle, starting at a corner */
+function perimeterPoints(n, a0, a1, b0, b1) {
+  const w = a1 - a0, d = b1 - b0, per = 2 * (w + d), out = [];
+  for (let i = 0; i < n; i++) {
+    const s = (i / n) * per;
+    if (s < w) out.push([a0 + s, b0]);
+    else if (s < w + d) out.push([a1, b0 + (s - w)]);
+    else if (s < 2 * w + d) out.push([a1 - (s - w - d), b1]);
+    else out.push([a0, b1 - (s - 2 * w - d)]);
+  }
+  return out;
+}
+
+/* one longitudinal bar, run along +x from u0, at height y and offset z */
+function longBar(u0, lenMm, y, z, o) {
+  const r = o.dia * CODE.cage.hookStandoffDia;
+  const u1 = u0 + lenMm;
+  function cap(u, dir) {
+    if (o.end === 'hook')
+      return [[u + dir * o.hookMm, y + r, z], [u + dir * r * 0.5, y + r, z],
+              [u, y + r * 0.6, z], [u, y, z]];
+    if (o.end === 'bend') return [[u, y + o.legMm, z], [u, y, z]];
+    return [[u, y, z]];
+  }
+  if (o.cranks > 0 && o.DMm > 0) {
+    const D = o.DMm, c = Math.max(0, Math.min(lenMm / 6, lenMm / 2 - D));
+    return [[u0, y + D, z], [u0 + c, y + D, z], [u0 + c + D, y, z],
+            [u1 - c - D, y, z], [u1 - c, y + D, z], [u1, y + D, z]];
+  }
+  return cap(u0, 1).concat(cap(u1, -1).reverse());
+}
+
+function swapXZ(path) { return path.map(function (p) { return [p[2], p[1], p[0]]; }); }
+function swapXY(path) { return path.map(function (p) { return [p[1], p[0], p[2]]; }); }
+
+/* a closed tie or stirrup in the plane perpendicular to `axis` */
+function ring(pos, shape, g, axis, tailMm) {
+  const P = axis === 'y'
+    ? function (a, b) { return [a, pos, b]; }
+    : function (a, b) { return [pos, a, b]; };
+  const a0 = g.a0, a1 = g.a1, b0 = g.b0, b1 = g.b1;
+  const t = Math.min(tailMm, Math.abs(a1 - a0) * 0.3, Math.abs(b1 - b0) * 0.3);
+  let loop;
+  if (shape === 'STIRRUP_CIRC') {
+    const ca = (a0 + a1) / 2, cb = (b0 + b1) / 2, r = Math.min(a1 - a0, b1 - b0) / 2;
+    loop = [];
+    for (let i = 0; i <= CODE.cage.circleSegments; i++) {
+      const th = i / CODE.cage.circleSegments * 2 * Math.PI;
+      loop.push(P(ca + r * Math.cos(th), cb + r * Math.sin(th)));
+    }
+  } else if (shape === 'STIRRUP_TRI') {
+    loop = [P(a0, b0), P(a0, b1), P(a1, (b0 + b1) / 2), P(a0, b0)];
+  } else if (shape === 'STIRRUP_DIA') {
+    const ma = (a0 + a1) / 2, mb = (b0 + b1) / 2;
+    loop = [P(ma, b0), P(a1, mb), P(ma, b1), P(a0, mb), P(ma, b0)];
+  } else {
+    loop = [P(a0, b0), P(a0, b1), P(a1, b1), P(a1, b0), P(a0, b0)];
+  }
+  return [loop, [P(a0, b0), P(a0 + t, b0 + t)]];
+}
+
+function boxSolid(L, H, W) {
+  return {
+    verts: [[0,0,0],[L,0,0],[L,H,0],[0,H,0],[0,0,W],[L,0,W],[L,H,W],[0,H,W]],
+    faces: [[0,1,2,3],[4,5,6,7],[0,1,5,4],[3,2,6,7],[0,3,7,4],[1,2,6,5]]
+  };
+}
+
+/* a side profile in (x, y) extruded across z */
+function prismSolid(profile, W) {
+  const n = profile.length, verts = [], faces = [];
+  profile.forEach(function (p) { verts.push([p[0], p[1], 0]); });
+  profile.forEach(function (p) { verts.push([p[0], p[1], W]); });
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    faces.push([i, j, j + n, i + n]);
+  }
+  const capA = [], capB = [];
+  for (let i = 0; i < n; i++) { capA.push(i); capB.push(n + n - 1 - i); }
+  faces.push(capA, capB);
+  return { verts: verts, faces: faces };
+}
+
+/* stirrup positions, thinned to a drawable number — depiction only, the
+   schedule count is untouched and the thinning is reported */
+function ringPositions(count, lo, hi) {
+  const max = CODE.cage.maxRings;
+  if (count <= max) return { at: spread(count, lo, hi), thinned: false };
+  return { at: spread(max, lo, hi), thinned: true };
+}
+
+const CAGES = {
+  /* box members: longitudinal bars either way, rings along the run */
+  box: function (m, rows, L, H, W, ds) {
+    const c = m.coverMm, bars = [];
+    let thinned = false;
+    rows.forEach(function (row) {
+      const d = row.dia;
+      if (row.position === 'stirrup') {
+        const p = ringPositions(row.barsPerMember, c, L - c);
+        thinned = thinned || p.thinned;
+        p.at.forEach(function (x) {
+          ring(x, row.shape, { a0: c, a1: H - c, b0: c, b1: W - c }, 'x',
+               row.sketch.hookMm || d * 6).forEach(function (path) {
+            bars.push({ mark: row.mark, dia: d, kind: 'ring', path: path });
+          });
+        });
+        return;
+      }
+      const b = row._bar || {}, alongZ = (b.along === 'width');
+      const inset = c + ds + d / 2;
+      const y = b.position === 'top' ? H - inset : c + d / 2 + (alongZ ? d : 0);
+      const runLen = (alongZ ? W : L) - 2 * c;
+      // bars sit inside the stirrup across the section as well as up it
+      const across = spread(row.barsPerMember, inset, (alongZ ? L : W) - inset);
+      const o = { dia: d, end: b.end || 'continuous',
+                  hookMm: row.sketch.hookMm || 0, legMm: row.sketch.legMm || 0,
+                  cranks: row.sketch.cranks || 0, DMm: row.sketch.crankMm || 0 };
+      across.forEach(function (t) {
+        const p = longBar(c, runLen, y, t, o);
+        bars.push({ mark: row.mark, dia: d, kind: 'long', path: alongZ ? swapXZ(p) : p });
+      });
+    });
+    return { solid: boxSolid(L, H, W), bars: bars, thinned: thinned,
+             bounds: { min: [0, 0, 0], max: [L, H, W] } };
+  },
+
+  /* column: the run is vertical, so the bars and ties are rotated up */
+  column: function (m, rows, ds) {
+    const c = m.coverMm, X = m.concrete.widthMm, Z = m.concrete.depthMm, Hh = m.concrete.heightMm;
+    const bars = [];
+    let thinned = false;
+    rows.forEach(function (row) {
+      const d = row.dia;
+      if (row.position === 'stirrup') {
+        const p = ringPositions(row.barsPerMember, c, Hh - c);
+        thinned = thinned || p.thinned;
+        p.at.forEach(function (y) {
+          ring(y, row.shape, { a0: c, a1: X - c, b0: c, b1: Z - c }, 'y',
+               row.sketch.hookMm || d * 6).forEach(function (path) {
+            bars.push({ mark: row.mark, dia: d, kind: 'ring', path: path });
+          });
+        });
+        return;
+      }
+      const b = row._bar || {}, inset = c + ds + d / 2;
+      const o = { dia: d, end: b.end || 'continuous',
+                  hookMm: row.sketch.hookMm || 0, legMm: row.sketch.legMm || 0,
+                  cranks: 0, DMm: 0 };
+      perimeterPoints(row.barsPerMember, inset, X - inset, inset, Z - inset)
+        .forEach(function (pt) {
+          bars.push({ mark: row.mark, dia: d, kind: 'long',
+                      path: swapXY(longBar(c, Hh - 2 * c, pt[0], pt[1], o)) });
+        });
+    });
+    return { solid: boxSolid(X, Hh, Z), bars: bars, thinned: thinned,
+             bounds: { min: [0, 0, 0], max: [X, Hh, Z] } };
+  },
+
+  /* staircase: a stepped profile extruded across the flight width, with
+     the main steel following the soffit */
+  staircase: function (m, rows) {
+    const cc = m.concrete, c = m.coverMm;
+    const R = cc.riserMm, T = cc.treadMm, n = cc.treads, wa = cc.waistMm, W = cc.widthMm;
+    const LA = cc.landingAMm || 0, LB = cc.landingBMm || 0;
+    const top = [[0, 0], [LA, 0]];
+    for (let i = 0; i < n; i++) {
+      top.push([LA + i * T, (i + 1) * R]);
+      top.push([LA + (i + 1) * T, (i + 1) * R]);
+    }
+    const endX = LA + n * T + LB, endY = n * R;
+    top.push([endX, endY]);
+    const profile = top.concat([[endX, endY - wa], [LA + n * T, endY - wa], [LA, -wa], [0, -wa]]);
+
+    /* the soffit line, lifted by cover, is the path the main bars follow */
+    const yA = -wa + c, yB = endY - wa + c;
+    const soffit = [[0, yA], [LA, yA], [LA + n * T, yB], [endX, yB]];
+    const bars = [];
+    rows.forEach(function (row) {
+      const b = row._bar || {}, d = row.dia;
+      if (b.along === 'width') {
+        /* distribution bars run across the flight, spaced along the soffit */
+        const at = spread(row.barsPerMember, 0.02, 0.98);
+        at.forEach(function (t) {
+          const p = alongPolyline(soffit, t);
+          bars.push({ mark: row.mark, dia: d, kind: 'long',
+                      path: [[p[0], p[1] + d, c], [p[0], p[1] + d, W - c]] });
+        });
+        return;
+      }
+      const leg = row.sketch.legMm || 0;
+      spread(row.barsPerMember, c, W - c).forEach(function (z) {
+        const path = soffit.map(function (p) { return [p[0], p[1] + d / 2, z]; });
+        if (b.end === 'bend' && leg > 0) {
+          path.unshift([soffit[0][0], soffit[0][1] + leg, z]);
+          path.push([endX, yB + leg, z]);
+        }
+        bars.push({ mark: row.mark, dia: d, kind: 'long', path: path });
+      });
+    });
+    const ys = profile.map(function (p) { return p[1]; });
+    return { solid: prismSolid(profile, W), bars: bars, thinned: false,
+             bounds: { min: [0, Math.min.apply(null, ys), 0],
+                       max: [endX, Math.max.apply(null, ys), W] } };
+  }
+};
+
+/* point at fraction t along a polyline given as [x, y] pairs */
+function alongPolyline(pts, t) {
+  let total = 0;
+  const segs = [];
+  for (let i = 1; i < pts.length; i++) {
+    const l = Math.hypot(pts[i][0] - pts[i-1][0], pts[i][1] - pts[i-1][1]);
+    segs.push(l); total += l;
+  }
+  let want = t * total;
+  for (let i = 0; i < segs.length; i++) {
+    if (want <= segs[i] || i === segs.length - 1) {
+      const f = segs[i] ? want / segs[i] : 0;
+      return [pts[i][0] + (pts[i+1][0] - pts[i][0]) * f,
+              pts[i][1] + (pts[i+1][1] - pts[i][1]) * f];
+    }
+    want -= segs[i];
+  }
+  return pts[0];
+}
+
+function cageFor(member, rows, geom) {
+  const ds = member.stirrups
+    ? (Array.isArray(member.stirrups) ? member.stirrups[0].dia : member.stirrups.dia)
+    : 0;
+  const cc = member.concrete;
+  switch (member.type) {
+    case 'column':    return CAGES.column(member, rows, ds);
+    case 'staircase': return CAGES.staircase(member, rows);
+    case 'beam':      return CAGES.box(member, rows, cc.spanMm, cc.depthMm, cc.widthMm, ds);
+    case 'lintel':    return CAGES.box(member, rows, geom.overall(member), cc.depthMm, cc.widthMm, ds);
+    case 'footing':   return CAGES.box(member, rows, cc.lengthMm, cc.depthMm, cc.widthMm, ds);
+    default:          return CAGES.box(member, rows, cc.lengthMm, cc.thicknessMm, cc.widthMm, ds);
+  }
+}
+
+/* ---------------------------------------------------------------------
    CHECKS — every one surfaces as a warning. Nothing throws, nothing is
    silently corrected, no threshold is bent to keep a job quiet.
    ------------------------------------------------------------------- */
@@ -799,7 +1067,8 @@ function generate(job) {
       concreteM3PerMember: round(volPer, 4),
       concreteM3Total: round(volTot, 4),
       steelPerM3: round(ratio, 2),
-      unverifiedFields: countUnverified(raw.provenance)
+      unverifiedFields: countUnverified(raw.provenance),
+      cage: cageFor(member, rows, geom)
     });
   });
 

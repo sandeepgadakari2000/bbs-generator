@@ -46,6 +46,29 @@ guessed. They are recorded here because they change the steel quantity:
 The bend set for every shape lives in `CODE.shapes`, so a stirrup's
 `3 × 2d + 2 × 3d` deduction is never written at a call site.
 
+## The cage
+
+`generate()` also returns `member.cage` — the reinforcement laid out in three
+dimensions, member-local, in millimetres, with x along the member, y up and z
+across:
+
+```js
+{ solid:  { verts: [[x,y,z]…], faces: [[i,j,k,l]…] },   // the concrete
+  bars:   [{ mark, dia, kind: 'long' | 'ring', path: [[x,y,z]…] }],
+  bounds: { min, max },
+  thinned: false }
+```
+
+It is point lists and face indices — no canvas, no projection, no colour. The
+viewer draws it with its own camera (perspective for the iso view, orthographic
+for elevation, section and plan), so `bbs.html` still opens with no network and
+no library. Opening a schedule row highlights that bar mark in the cage.
+
+Only the *drawing* of the cage is budgeted: past `CODE.cage.maxRings` stirrups
+per member the viewer draws a sample of them and sets `thinned: true` so the
+thinning is visible rather than silent. No quantity is affected, and a test
+asserts it.
+
 ## The external-input seam
 
 `adoptExternalMembers(members, source)` takes a member array from outside —

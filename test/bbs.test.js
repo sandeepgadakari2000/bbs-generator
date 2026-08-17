@@ -364,6 +364,132 @@ test('all eight member types produce a schedule', function () {
   );
 });
 
+/* --- the 3D cage ---------------------------------------------------- */
+test('the cage lays every bar out in three dimensions', function () {
+  const out = generate(acceptanceJob());
+  const cage = out.members[0].cage;
+
+  assert.equal(cage.solid.verts.length, 8, 'a beam is a box');
+  assert.equal(cage.solid.faces.length, 6);
+  assert.deepEqual(cage.bounds.max, [4000, 450, 300], 'span × depth × width');
+
+  const long = cage.bars.filter(function (b) { return b.kind === 'long'; });
+  const rings = cage.bars.filter(function (b) { return b.kind === 'ring'; });
+  assert.equal(long.length, 4, 'one drawn bar per bar in the member');
+  assert.equal(rings.filter(function (b) { return b.path.length > 2; }).length, 28,
+    'one drawn stirrup per stirrup counted');
+  assert.equal(cage.thinned, false);
+
+  cage.bars.forEach(function (b) {
+    assert.ok(b.path.length >= 2, b.mark + ' has a degenerate path');
+    b.path.forEach(function (p) {
+      assert.equal(p.length, 3);
+      p.forEach(function (v) { assert.ok(Number.isFinite(v), b.mark + ' has a non-finite point'); });
+    });
+  });
+
+  // the four bottom bars sit one bar-radius above cover + stirrup, spread across the width
+  const zs = long.map(function (b) { return b.path[1][2]; }).sort(function (a, b) { return a - b; });
+  assert.equal(zs[0], 25 + 8 + 8, 'first bar at cover + stirrup + radius');
+  assert.equal(zs[3], 300 - (25 + 8 + 8), 'last bar symmetric');
+});
+
+test('cage bars stay inside the concrete, apart from hooks and legs standing proud', function () {
+  const types = generate({ members: [
+    { id:'F1', type:'footing', quantity:1, coverMm:50,
+      concrete:{ lengthMm:1800, widthMm:1800, depthMm:450 },
+      bars:[{ label:'X', along:'length', position:'bottom', dia:16, spacingMm:150, end:'bend' },
+            { label:'Y', along:'width', position:'bottom', dia:16, spacingMm:150, end:'bend' }] },
+    { id:'S1', type:'slabOneWay', quantity:1, coverMm:20,
+      concrete:{ lengthMm:3000, widthMm:4500, thicknessMm:125 },
+      bars:[{ label:'Main', along:'length', position:'bottom', dia:10, spacingMm:150, end:'crank' }] }
+  ] });
+
+  types.members.forEach(function (m) {
+    const c = m.cage, lo = c.bounds.min, hi = c.bounds.max;
+    c.bars.forEach(function (b) {
+      b.path.forEach(function (p) {
+        // x and z must stay within the plan outline; y may rise for a bent leg
+        assert.ok(p[0] >= lo[0] - 1 && p[0] <= hi[0] + 1, m.id + ' bar leaves the plan in x');
+        assert.ok(p[2] >= lo[2] - 1 && p[2] <= hi[2] + 1, m.id + ' bar leaves the plan in z');
+        assert.ok(p[1] >= lo[1] - 1, m.id + ' bar drops below the soffit');
+      });
+    });
+  });
+
+  // the cranked slab bar really does change level
+  const crank = types.members[1].cage.bars[0].path.map(function (p) { return p[1]; });
+  assert.ok(Math.max.apply(null, crank) > Math.min.apply(null, crank), 'crank has no rise');
+});
+
+test('cage drawing limits never touch a quantity', function () {
+  const job = acceptanceJob();
+  job.members[0].concrete.spanMm = 12000;      // ~80 stirrups, over CODE.cage.maxRings
+  const before = generate(job);
+  assert.equal(before.members[0].cage.thinned, true, 'thinning must be reported, not silent');
+
+  const saved = CODE.cage.maxRings;
+  try {
+    CODE.cage.maxRings = 500;
+    const after = generate(job);
+    assert.equal(after.members[0].cage.thinned, false);
+    assert.equal(after.summary.grossKg, before.summary.grossKg, 'drawing budget changed a weight');
+    assert.equal(mark(after, 'B1-02').totalBars, mark(before, 'B1-02').totalBars,
+      'drawing budget changed a bar count');
+  } finally { CODE.cage.maxRings = saved; }
+});
+
+test('every member type produces a drawable cage', function () {
+  const beam = acceptanceJob().members[0];
+  const jobs = [
+    beam,
+    { id:'C1', type:'column', quantity:1, coverMm:40,
+      concrete:{ widthMm:300, depthMm:450, heightMm:3000 },
+      bars:[{ label:'Vertical', position:'main', dia:20, count:6, end:'continuous' }],
+      stirrups:{ shape:'STIRRUP_RECT', dia:8, spacingMm:150, legs:2 } },
+    { id:'C2', type:'column', quantity:1, coverMm:40,
+      concrete:{ widthMm:450, depthMm:450, heightMm:3000 },
+      bars:[{ label:'Vertical', position:'main', dia:20, count:8, end:'continuous' }],
+      stirrups:{ shape:'STIRRUP_CIRC', dia:8, spacingMm:150, diameterMm:450 } },
+    { id:'L1', type:'lintel', quantity:1, coverMm:25,
+      concrete:{ widthMm:230, depthMm:150, spanMm:1200, bearingMm:200 },
+      bars:[{ label:'Bottom', position:'bottom', dia:10, count:2, end:'hook' }],
+      stirrups:{ shape:'STIRRUP_RECT', dia:6, spacingMm:150, legs:2 } },
+    { id:'S2', type:'slabTwoWay', quantity:1, coverMm:20,
+      concrete:{ lengthMm:3600, widthMm:4200, thicknessMm:150 },
+      bars:[{ label:'Short', along:'length', position:'bottom', dia:10, spacingMm:125, end:'hook' },
+            { label:'Long', along:'width', position:'bottom', dia:10, spacingMm:150, end:'hook' }] },
+    { id:'ST1', type:'staircase', quantity:1, coverMm:20,
+      concrete:{ riserMm:165, treadMm:280, treads:10, waistMm:150, widthMm:1200,
+                 landingAMm:1200, landingBMm:1200 },
+      bars:[{ label:'Main', along:'flight', position:'bottom', dia:12, spacingMm:150, end:'bend' },
+            { label:'Dist', along:'width', position:'distribution', dia:8, spacingMm:200, end:'continuous' }] }
+  ];
+
+  jobs.forEach(function (j) {
+    const m = generate({ members: [j] }).members[0], c = m.cage;
+    assert.ok(c, j.id + ' has no cage');
+    assert.ok(c.solid.verts.length >= 8, j.id + ' has no solid');
+    assert.ok(c.solid.faces.length >= 6, j.id + ' has no faces');
+    assert.ok(c.bars.length > 0, j.id + ' has no bars in the cage');
+    c.solid.faces.forEach(function (f) {
+      f.forEach(function (i) {
+        assert.ok(c.solid.verts[i], j.id + ' face indexes a missing vertex');
+      });
+    });
+    c.bars.forEach(function (b) {
+      assert.ok(b.mark && b.dia > 0, j.id + ' cage bar is missing its mark or diameter');
+      b.path.forEach(function (p) {
+        p.forEach(function (v) { assert.ok(Number.isFinite(v), j.id + ' non-finite point'); });
+      });
+    });
+    // every mark in the schedule appears in the cage
+    const marks = {};
+    c.bars.forEach(function (b) { marks[b.mark] = true; });
+    m.rows.forEach(function (r) { assert.ok(marks[r.mark], j.id + ' cage is missing ' + r.mark); });
+  });
+});
+
 /* --- constants really do come from CODE ----------------------------- */
 test('constants are read from CODE at call time, not inlined', function () {
   function len() { return mark(generate(acceptanceJob()), 'B1-01').cuttingLengthMm; }

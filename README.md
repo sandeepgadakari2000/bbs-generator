@@ -55,6 +55,36 @@ guessed. They are recorded here because they change the steel quantity:
 The bend set for every shape lives in `CODE.shapes`, so a stirrup's
 `3 × 2d + 2 × 3d` deduction is never written at a call site.
 
+## Architectural schemes (page 1)
+
+Once the frame is scheduled, `src/scheme.js` partitions its envelope four ways —
+Linear Core, Side Spine, Light Court, Rear Stair — and masses the chosen one as
+an exterior.
+
+The envelope is **the grid that was already scheduled**, not a fresh plot with
+setbacks, so the plan and the steel describe one building. Nothing statutory is
+invented: there is no FAR limit and no setback rule in here, because those are
+local and belong to whoever files the drawing.
+
+```js
+generateSchemes({ widthMm, depthMm, floors, bedrooms, rental, seed, flip })
+→ [{ id, name, facade, floors:[{ name, rooms:[…] }], builtM2, carpetM2, openM2, tight, … }]
+
+exteriorFor(scheme, { floorHeightMm })
+→ { parts:[{ kind, faces:[{ n, v }] }], bounds, ridgeMm, facade }
+```
+
+Rooms tile the envelope exactly and never overlap — both are asserted. A room
+that cannot reach a comfortable size is **flagged, never quietly grown**: the
+scheme reports `tight` and names the spaces, and the packer leaves the room at
+the size the envelope actually allows.
+
+The exterior is explicit quads with outward normals rather than boxes, so a
+skillion roof is as easy as a wall. It renders through the same camera as the
+frame and the cage, which means Iso / Elevation / Section / Plan work on it too.
+It is drawn in this repo's ink and accent — not the prototype's greens and
+blues, since CLAUDE.md pins the palette.
+
 ## Page 2 — reading a plan PDF
 
 `src/plan.js` parses a PDF with no library and no network: objects (including

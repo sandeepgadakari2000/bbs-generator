@@ -4,12 +4,13 @@ Bar bending schedule generator for Indian site engineers. Two ways in: type the
 structural grid, or drop the plan PDF.
 
 ```
-src/bbs.js       the detailing engine — pure, no DOM, no dependencies
+src/bbs.js       the detailing engine — bar lengths, schedules, cage, frame
+src/scheme.js    the planner — four partitions of a frame, plus its exterior
 src/plan.js      the plan reader — PDF in, reviewable parameters out
 test/            node --test
 test/fixtures/   PDFs built by test/make-fixtures.py, expected values known
 bbs.html         the viewer, both pages — one file, opens from the filesystem
-tools/inline.js  copies both modules into their marked blocks in bbs.html
+tools/inline.js  copies all three modules into their marked blocks in bbs.html
 reference/       the prototype and brief this was built from
 ```
 
@@ -27,14 +28,14 @@ py -3.13 test/make-fixtures.py
 
 Open `bbs.html` by double-clicking it. No server, no network, no build.
 
-After editing `src/bbs.js`, re-sync the viewer's copy:
+After editing anything under `src/`, re-sync the viewer's copies:
 
 ```bash
 node tools/inline.js
 ```
 
-`test/inline.test.js` fails if the two copies ever drift, so this cannot be
-forgotten silently.
+`test/inline.test.js` fails if any copy drifts, so this cannot be forgotten
+silently.
 
 ## Detailing conventions
 

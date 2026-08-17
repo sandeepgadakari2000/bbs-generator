@@ -8,16 +8,24 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { extract } = require('../tools/inline.js');
+const { extract, between, MODULES } = require('../tools/inline.js');
 
 const ROOT = path.join(__dirname, '..');
 const html = fs.readFileSync(path.join(ROOT, 'bbs.html'), 'utf8');
 
-test('the inlined engine is byte-identical to src/bbs.js', function () {
-  const src = fs.readFileSync(path.join(ROOT, 'src', 'bbs.js'), 'utf8').replace(/\n$/, '');
-  const inlined = extract(html);
-  assert.ok(inlined !== null, 'bbs.html has no ENGINE:BEGIN / ENGINE:END block');
-  assert.equal(inlined, src, 'bbs.html engine block is stale — run: node tools/inline.js');
+/* the viewer alone — every inlined engine module removed */
+const viewerOnly = MODULES.reduce(function (acc, mod) {
+  const block = between(html, mod.begin, mod.end);
+  return block ? acc.replace(block, '') : acc;
+}, html);
+
+MODULES.forEach(function (mod) {
+  test('the inlined copy of ' + mod.src + ' is byte-identical to the source', function () {
+    const src = fs.readFileSync(path.join(ROOT, mod.src), 'utf8').replace(/\n$/, '');
+    const inlined = between(html, mod.begin, mod.end);
+    assert.ok(inlined !== null, 'bbs.html has no marked block for ' + mod.src);
+    assert.equal(inlined, src, 'bbs.html block for ' + mod.src + ' is stale — run: node tools/inline.js');
+  });
 });
 
 test('bbs.html pulls nothing off the network', function () {
@@ -45,8 +53,7 @@ test('bbs.html touches no browser storage API', function () {
 
 test('the viewer uses only the four palette colours', function () {
   // strip the engine block first — it has no colours, but keep the check honest
-  const viewer = html
-    .replace(extract(html), '')
+  const viewer = viewerOnly
     .replace(/\$\('#[\w-]+'\)/g, '')          // querySelector ids are not colours
     .replace(/(?:id|for)="[\w-]+"/g, '');     // nor are the ids they point at
   const allowed = ['#14171a', '#f6f7f6', '#b6bcb9', '#e07b1e', '#fff', '#ffffff'];
@@ -67,7 +74,6 @@ test('the required verification line is in the app footer', function () {
 test('no BS 8666 conformance is claimed anywhere', function () {
   const src = fs.readFileSync(path.join(ROOT, 'src', 'bbs.js'), 'utf8');
   assert.ok(!/BS\s*8666/i.test(src) || /No BS 8666 conformance is claimed/.test(src));
-  assert.ok(!/BS\s*8666/i.test(extract(html)) || /No BS 8666 conformance is claimed/.test(extract(html)));
-  const viewer = html.replace(extract(html), '');
+  const viewer = viewerOnly;
   assert.ok(!/BS\s*8666/i.test(viewer), 'the viewer must not mention BS 8666');
 });

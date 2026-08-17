@@ -137,6 +137,57 @@
   .shapecell svg{display:block;height:30px;width:auto;flex:0 0 auto}
   .shapecell b{font:600 9px/1.2 var(--mono);letter-spacing:.04em}
 
+  /* ---------- pages ---------- */
+  nav#nav{display:flex;border-bottom:1px solid var(--rule);background:var(--paper);overflow-x:auto}
+  nav#nav button{flex:0 0 auto;border:0;border-right:1px solid var(--rule);background:transparent;
+    color:var(--steel);cursor:pointer;padding:13px 16px;min-height:46px;
+    font:600 10px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;white-space:nowrap}
+  nav#nav button.on{background:var(--ink);color:var(--paper);border-right-color:var(--ink)}
+  .page{display:none}
+  .page.on{display:block}
+
+  /* ---------- uploader ---------- */
+  #drop{margin:0 0 10px;border:1px dashed var(--rule);background:var(--paper);
+    padding:26px 16px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s}
+  #drop.hot{border-color:var(--accent);background:var(--tint)}
+  #drop b{display:block;font:600 13px/1.4 var(--mono)}
+  #drop span{display:block;font:500 10px/1.6 var(--mono);color:var(--steel);margin:5px 0 11px}
+  #drop input[type=file]{display:none}
+  #pdfstatus{font:500 10.5px/1.7 var(--mono);color:var(--steel);margin-bottom:10px}
+  #pdfstatus .bar{height:3px;background:var(--hair);margin:7px 0;overflow:hidden}
+  #pdfstatus .bar i{display:block;height:3px;background:var(--accent);width:0}
+  #pdfstatus .bad{color:var(--accent);font-weight:700}
+  #pdfstatus ol{margin:6px 0 0;padding-left:18px}
+  #pdfpages{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));
+    gap:8px;margin-bottom:10px}
+  .pdfpage{border:1px solid var(--rule);background:var(--paper)}
+  .pdfpage svg{display:block;width:100%;height:auto;background:#fff;
+    border-bottom:1px solid var(--hair)}
+  .pdfpage .cap{padding:6px 8px;font:500 8.5px/1.5 var(--mono);letter-spacing:.1em;
+    text-transform:uppercase;color:var(--steel)}
+  .pdfpage .cap b{color:var(--ink)}
+
+  /* ---------- extracted parameters ---------- */
+  #params td.src{font:500 9.5px/1.5 var(--mono);color:var(--steel);white-space:normal;
+    max-width:330px;word-break:break-word}
+  #params input{width:100%;min-width:80px;border:1px solid var(--hair);background:#fff;
+    color:var(--ink);font:600 11px/1.3 var(--mono);padding:6px 7px;min-height:32px;outline:none}
+  #params input:focus{border-color:var(--accent);color:var(--accent)}
+  #params .tag{display:inline-block;font:600 8px/1.4 var(--mono);letter-spacing:.14em;
+    text-transform:uppercase;padding:3px 5px;border:1px solid var(--rule);color:var(--steel)}
+  #params .tag.sheet{border-color:var(--accent);color:var(--accent)}
+  #params .tag.edited{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+
+  /* ---------- design review ---------- */
+  #review .rv{border:1px solid var(--rule);background:var(--paper);padding:10px 12px;margin-bottom:7px}
+  #review .rv.flag{border-color:var(--accent);background:var(--tint)}
+  #review .rv h4{margin:0 0 5px;font:700 9px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase}
+  #review .rv.flag h4{color:var(--accent)}
+  #review .rv p{margin:0;font:500 10.5px/1.65 var(--mono);color:var(--steel)}
+  #review .rv p b{color:var(--ink)}
+  #review .rv u{display:block;text-decoration:none;margin-top:5px;
+    font:500 9px/1.5 var(--mono);letter-spacing:.06em;color:var(--steel)}
+
   /* ---------- cage ---------- */
   #cagewrap{position:relative;background:var(--paper);border:1px solid var(--rule);
     height:min(58vh,430px);overflow:hidden}
@@ -191,7 +242,12 @@
     @page{ size:A4; margin:11mm; }
     body{background:#fff;padding:0;font-size:9pt}
     header,.strip,#bar,.tabs,.mcard,.addm,#tsvwrap,#memhead,#readout,
-    .noprint,tr.detail{display:none!important}
+    .noprint,tr.detail,nav#nav,#drop,#pdfstatus,#pdfpages{display:none!important}
+    /* the read parameters and the design review belong on the filed sheet */
+    #params input{border:0;padding:0;font-weight:700;min-height:0;background:transparent}
+    #params td.src{max-width:none}
+    #review .rv{break-inside:avoid;padding:6px 8px;margin-bottom:4px}
+    .page:not(.on){display:none!important}
     .sechead u{display:none}
     /* 11 columns have to fit 188 mm of A4 */
     .shapecell svg{height:14px}
@@ -230,7 +286,12 @@
   <div class="field"><label>Revision</label><input id="pRev" type="text" value="R0"></div>
 </div>
 
-<div id="readout"></div>
+<nav id="nav">
+  <button data-p="page1" class="on">1 · Manual calculation</button>
+  <button data-p="page2">2 · PDF plan &amp; auto-generate</button>
+</nav>
+
+<div class="page on" id="page1">
 
 <div class="sec" id="framesec">
   <div class="sechead"><h2>Structural grid</h2><i></i><u id="framenote"></u></div>
@@ -256,6 +317,40 @@
   <div class="sechead"><h2>Members</h2><i></i><u id="memcount"></u></div>
   <div id="members"></div>
 </div>
+
+<div class="slot" id="slot1"></div>
+</div>
+
+<div class="page" id="page2">
+
+  <div class="sec">
+    <div class="sechead"><h2>Plan PDF</h2><i></i><u id="pdfhint">vector drawings — a scan has no text to read</u></div>
+    <div id="drop" tabindex="0" role="button" aria-label="Drop a plan PDF here or choose a file">
+      <b>Drop a plan PDF here</b>
+      <span>PDF exported from CAD, not a photo or a scan</span>
+      <button class="mini k" id="btnBrowse" type="button">Choose a file</button>
+      <input id="pdfFile" type="file" accept="application/pdf,.pdf">
+    </div>
+    <div id="pdfstatus"></div>
+    <div id="pdfpages"></div>
+    <button class="addm" id="btnProcess" disabled>Process plan</button>
+  </div>
+
+  <div class="sec" id="paramsec">
+    <div class="sechead"><h2>Extracted parameters</h2><i></i><u id="paramnote"></u></div>
+    <div class="tablewrap"><table id="params"></table></div>
+  </div>
+
+  <div class="sec" id="reviewsec">
+    <div class="sechead"><h2>Design review</h2><i></i><u id="reviewnote"></u></div>
+    <div id="review"></div>
+  </div>
+
+  <div class="slot" id="slot2"></div>
+</div>
+
+<div id="results">
+<div id="readout"></div>
 
 <div class="sec" id="cagesec">
   <div class="sechead"><h2>Model</h2><i></i><u id="cagehint">drag to orbit · scroll to zoom</u></div>
@@ -303,6 +398,8 @@
   <textarea id="tsv" readonly spellcheck="false"></textarea>
 </div>
 
+</div>
+
 <footer class="note">
   <b>Before site use</b>
   Detailing constants follow common Indian practice. Verify against IS 2502, IS 456 and the
@@ -311,9 +408,814 @@
 
 <div id="bar">
   <div class="grow" id="barnote"></div>
+  <button id="btnCsv">CSV</button>
   <button id="btnTsv">Copy TSV</button>
   <button id="btnPrint" class="k">Print</button>
 </div>
+
+<script id="planreader">
+/* PLAN:BEGIN — generated from src/plan.js by tools/inline.js. Do not edit here. */
+'use strict';
+
+/* =====================================================================
+   PLAN READER — a PDF drawing turned into a reviewable frame spec.
+
+   Pure logic. No DOM, no window, no third-party code, requireable in
+   Node. Flate streams are inflated with the platform's own
+   DecompressionStream, so nothing is bundled and nothing is fetched.
+
+   WHAT THIS DOES honestly:
+     - parses PDF objects, including PDF 1.5 object streams
+     - inflates content streams and reads their text and line geometry
+     - reads dimensions off the sheet the way a person does: from the
+       numbers lettered on it, not by measuring pixels
+     - returns every value with the text it came from and a confidence,
+       and marks the lot unverified
+
+   WHAT IT DOES NOT DO:
+     - it cannot read a scanned drawing. A page with no text operators
+       carries no numbers to find; that is reported, never guessed.
+     - it does not understand a drawing. It finds candidates. The
+       engineer confirms them before any steel is ordered.
+   ===================================================================== */
+
+/* ---------------------------------------------------------------------
+   READ — tunables for the reader. Every threshold the inference leans on
+   lives here so none of them is buried at a call site. None of these is
+   a detailing constant; they only decide what the reader is willing to
+   call a dimension.
+   ------------------------------------------------------------------- */
+const READ = {
+  span:      { minMm: 1200, maxMm: 15000 },   // a bay worth believing
+  section:   { minMm: 100,  maxMm: 2500 },    // a member face dimension
+  thickness: { minMm: 75,   maxMm: 400 },     // a slab waist
+  cover:     { minMm: 15,   maxMm: 90 },
+  height:    { minMm: 2100, maxMm: 6000 },    // storey height
+  chain:     { alignTolPt: 6, minLinks: 2 },  // how straight a dimension chain must be
+  maxPages:  40,
+  maxTextTokens: 20000
+};
+
+/* ---------------------------------------------------------------------
+   Byte helpers — a PDF is bytes, and the text parts are Latin-1
+   ------------------------------------------------------------------- */
+function latin1(bytes, from, to) {
+  let s = '';
+  const end = Math.min(to === undefined ? bytes.length : to, bytes.length);
+  for (let i = from || 0; i < end; i++) s += String.fromCharCode(bytes[i]);
+  return s;
+}
+
+function indexOfBytes(bytes, needle, from) {
+  const n = needle.length;
+  outer: for (let i = from || 0; i <= bytes.length - n; i++) {
+    for (let j = 0; j < n; j++) if (bytes[i + j] !== needle[j]) continue outer;
+    return i;
+  }
+  return -1;
+}
+
+function asciiBytes(s) {
+  const a = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) a[i] = s.charCodeAt(i) & 0xff;
+  return a;
+}
+
+/* stream slices run up to `endstream`, so they carry the EOL that writers
+   put before that keyword; zlib counts it as trailing junk */
+function trimEol(bytes) {
+  let end = bytes.length;
+  while (end > 0 && (bytes[end - 1] === 0x0a || bytes[end - 1] === 0x0d ||
+                     bytes[end - 1] === 0x20 || bytes[end - 1] === 0x09)) end--;
+  return bytes.subarray(0, end);
+}
+
+async function inflate(raw) {
+  const bytes = trimEol(raw);
+  /* PDF FlateDecode is zlib-wrapped; a few writers emit raw deflate */
+  for (const fmt of ['deflate', 'deflate-raw']) {
+    try {
+      const ds = new DecompressionStream(fmt);
+      const w = ds.writable.getWriter();
+      /* the write side rejects on a bad stream — swallow it here so it can
+         never surface as an unhandled rejection and take the page down */
+      const pump = (async function () { await w.write(bytes); await w.close(); })()
+        .catch(function () {});
+      const chunks = [], rd = ds.readable.getReader();
+      for (;;) {
+        const r = await rd.read();
+        if (r.done) break;
+        chunks.push(r.value);
+      }
+      await pump;
+      let len = 0;
+      chunks.forEach(function (c) { len += c.length; });
+      const out = new Uint8Array(len);
+      let at = 0;
+      chunks.forEach(function (c) { out.set(c, at); at += c.length; });
+      return out;
+    } catch (e) { /* try the next format */ }
+  }
+  return null;
+}
+
+/* ---------------------------------------------------------------------
+   FILTERS — a stream may be wrapped in a chain, e.g.
+   /Filter [ /ASCII85Decode /FlateDecode ], and the chain is applied in
+   order. Anything unsupported is named rather than silently dropped.
+   ------------------------------------------------------------------- */
+function ascii85Decode(bytes) {
+  const out = [];
+  let tuple = [], i = 0;
+  /* an optional <~ lead-in */
+  if (bytes[0] === 0x3c && bytes[1] === 0x7e) i = 2;
+  for (; i < bytes.length; i++) {
+    const c = bytes[i];
+    if (c === 0x7e) break;                                  // ~> terminator
+    if (c === 0x0a || c === 0x0d || c === 0x20 || c === 0x09 || c === 0x00) continue;
+    if (c === 0x7a && tuple.length === 0) { out.push(0, 0, 0, 0); continue; }   // z
+    if (c < 0x21 || c > 0x75) return null;
+    tuple.push(c - 0x21);
+    if (tuple.length === 5) {
+      let v = 0;
+      for (let k = 0; k < 5; k++) v = v * 85 + tuple[k];
+      out.push((v >>> 24) & 0xff, (v >>> 16) & 0xff, (v >>> 8) & 0xff, v & 0xff);
+      tuple = [];
+    }
+  }
+  if (tuple.length) {
+    const n = tuple.length;
+    for (let k = n; k < 5; k++) tuple.push(84);
+    let v = 0;
+    for (let k = 0; k < 5; k++) v = v * 85 + tuple[k];
+    const b = [(v >>> 24) & 0xff, (v >>> 16) & 0xff, (v >>> 8) & 0xff, v & 0xff];
+    for (let k = 0; k < n - 1; k++) out.push(b[k]);
+  }
+  return new Uint8Array(out);
+}
+
+function asciiHexDecode(bytes) {
+  const hex = latin1(bytes).replace(/[^0-9a-fA-F>]/g, '').split('>')[0];
+  const out = new Uint8Array(Math.ceil(hex.length / 2));
+  for (let i = 0; i < out.length; i++) out[i] = parseInt((hex.substr(i * 2, 2) + '0').slice(0, 2), 16);
+  return out;
+}
+
+function filterNames(dict) {
+  const f = dictGet(dict, 'Filter');
+  if (!f) return [];
+  return (f.match(/\/([A-Za-z0-9]+)/g) || []).map(function (s) { return s.slice(1); });
+}
+
+async function applyFilters(bytes, dict) {
+  let data = bytes;
+  const unsupported = [];
+  for (const name of filterNames(dict)) {
+    if (name === 'FlateDecode') {
+      const inf = await inflate(data);
+      if (!inf) return { data: null, unsupported: unsupported };
+      data = inf;
+    } else if (name === 'ASCII85Decode') {
+      const d = ascii85Decode(data);
+      if (!d) return { data: null, unsupported: unsupported };
+      data = d;
+    } else if (name === 'ASCIIHexDecode') {
+      data = asciiHexDecode(data);
+    } else if (name === 'DCTDecode' || name === 'JPXDecode' || name === 'CCITTFaxDecode' ||
+               name === 'JBIG2Decode') {
+      return { data: null, unsupported: unsupported.concat([name]), image: true };
+    } else {
+      unsupported.push(name);
+      return { data: null, unsupported: unsupported };
+    }
+  }
+  return { data: data, unsupported: unsupported };
+}
+
+/* ---------------------------------------------------------------------
+   TOUNICODE — subset fonts letter with their own glyph codes, so the raw
+   bytes mean nothing without the font's map. Without this, a drawing
+   exported from Word or Illustrator reads as control characters.
+   ------------------------------------------------------------------- */
+function utf16beToString(hex) {
+  let s = '';
+  for (let i = 0; i + 3 < hex.length + 1; i += 4) {
+    const v = parseInt(hex.substr(i, 4), 16);
+    if (isFinite(v)) s += String.fromCharCode(v);
+  }
+  return s;
+}
+
+function parseToUnicode(src) {
+  const map = {};
+  let width = 2;
+  const csr = src.match(/begincodespacerange([\s\S]*?)endcodespacerange/);
+  if (csr) {
+    const first = csr[1].match(/<([0-9a-fA-F]+)>/);
+    if (first) width = Math.max(1, Math.round(first[1].length / 2));
+  }
+  let m;
+  const charRx = /beginbfchar([\s\S]*?)endbfchar/g;
+  while ((m = charRx.exec(src))) {
+    const pairRx = /<([0-9a-fA-F]+)>\s*<([0-9a-fA-F]*)>/g;
+    let p;
+    while ((p = pairRx.exec(m[1]))) map[parseInt(p[1], 16)] = utf16beToString(p[2]);
+  }
+  const rangeRx = /beginbfrange([\s\S]*?)endbfrange/g;
+  while ((m = rangeRx.exec(src))) {
+    const body = m[1];
+    const listRx = /<([0-9a-fA-F]+)>\s*<([0-9a-fA-F]+)>\s*\[([\s\S]*?)\]/g;
+    let r;
+    while ((r = listRx.exec(body))) {
+      const lo = parseInt(r[1], 16);
+      const items = r[3].match(/<([0-9a-fA-F]*)>/g) || [];
+      items.forEach(function (it, k) { map[lo + k] = utf16beToString(it.replace(/[<>]/g, '')); });
+    }
+    const seqRx = /<([0-9a-fA-F]+)>\s*<([0-9a-fA-F]+)>\s*<([0-9a-fA-F]+)>/g;
+    while ((r = seqRx.exec(body))) {
+      const lo = parseInt(r[1], 16), hi = parseInt(r[2], 16), dst = parseInt(r[3], 16);
+      if (!isFinite(lo) || !isFinite(hi) || hi - lo > 0xffff) continue;
+      for (let c = lo; c <= hi; c++) map[c] = String.fromCharCode(dst + (c - lo));
+    }
+  }
+  return { map: map, width: width, size: Object.keys(map).length };
+}
+
+/* ---------------------------------------------------------------------
+   OBJECTS — scan for `N G obj … endobj` rather than trusting the xref,
+   because drawings exported from CAD often have a damaged one.
+   ------------------------------------------------------------------- */
+function scanObjects(bytes) {
+  const src = latin1(bytes);
+  const objs = {};
+  const rx = /(\d+)\s+(\d+)\s+obj\b/g;
+  let m;
+  while ((m = rx.exec(src))) {
+    const num = +m[1], bodyStart = m.index + m[0].length;
+    const endIdx = src.indexOf('endobj', bodyStart);
+    const stop = endIdx < 0 ? src.length : endIdx;
+    const sIdx = src.indexOf('stream', bodyStart);
+    const dictEnd = (sIdx >= 0 && sIdx < stop) ? sIdx : stop;
+    const dict = src.slice(bodyStart, dictEnd);
+    let stream = null;
+    if (sIdx >= 0 && sIdx < stop) {
+      let s = sIdx + 'stream'.length;
+      if (src[s] === '\r') s++;
+      if (src[s] === '\n') s++;
+      const eIdx = indexOfBytes(bytes, asciiBytes('endstream'), s);
+      stream = { from: s, to: eIdx < 0 ? stop : eIdx };
+    }
+    objs[num] = { num: num, dict: dict, stream: stream };
+  }
+  return objs;
+}
+
+function dictGet(dict, key) {
+  const i = dict.indexOf('/' + key);
+  if (i < 0) return null;
+  let j = i + key.length + 1;
+  while (j < dict.length && /\s/.test(dict[j])) j++;
+  if (dict[j] === '[') {
+    const k = dict.indexOf(']', j);
+    return dict.slice(j, k + 1);
+  }
+  if (dict[j] === '<' && dict[j + 1] === '<') {
+    let depth = 0;
+    for (let k = j; k < dict.length - 1; k++) {
+      if (dict[k] === '<' && dict[k + 1] === '<') { depth++; k++; }
+      else if (dict[k] === '>' && dict[k + 1] === '>') { depth--; k++; if (!depth) return dict.slice(j, k + 1); }
+    }
+    return dict.slice(j);
+  }
+  if (dict[j] === '/') {                 // a bare name value, e.g. /Filter /FlateDecode
+    let name = '/';
+    j++;
+    while (j < dict.length && !/[\s/>\]([]/.test(dict[j])) { name += dict[j]; j++; }
+    return name;
+  }
+  let out = '';
+  while (j < dict.length && !/[\s/>\]]/.test(dict[j])) { out += dict[j]; j++; }
+  if (/^\d+$/.test(out)) {
+    const ref = dict.slice(j).match(/^\s+(\d+)\s+R\b/);
+    if (ref) return out + ' ' + ref[1] + ' R';
+  }
+  return out;
+}
+
+function refNums(value) {
+  if (!value) return [];
+  const out = [], rx = /(\d+)\s+\d+\s+R/g;
+  let m;
+  while ((m = rx.exec(value))) out.push(+m[1]);
+  return out;
+}
+
+/* PDF 1.5 packs plain objects into compressed object streams */
+async function expandObjectStreams(objs, bytes) {
+  const added = {};
+  for (const k of Object.keys(objs)) {
+    const o = objs[k];
+    if (!o.stream || o.dict.indexOf('/ObjStm') < 0) continue;
+    const dec = await applyFilters(bytes.subarray(o.stream.from, o.stream.to), o.dict);
+    const raw = dec.data;
+    if (!raw) continue;
+    const n = +dictGet(o.dict, 'N'), first = +dictGet(o.dict, 'First');
+    if (!n || !isFinite(first)) continue;
+    const head = latin1(raw, 0, first).trim().split(/\s+/).map(Number);
+    const body = latin1(raw, first);
+    for (let i = 0; i < n; i++) {
+      const num = head[i * 2], off = head[i * 2 + 1];
+      const next = (i + 1 < n) ? head[i * 2 + 3] : body.length;
+      if (num === undefined || off === undefined) continue;
+      added[num] = { num: num, dict: body.slice(off, next), stream: null };
+    }
+  }
+  Object.keys(added).forEach(function (k) { if (!objs[k]) objs[k] = added[k]; });
+  return objs;
+}
+
+/* ---------------------------------------------------------------------
+   CONTENT STREAMS — text with positions, and line geometry
+   ------------------------------------------------------------------- */
+function decodePdfString(tok) {
+  if (tok[0] === '<') {
+    const hex = tok.slice(1, -1).replace(/[^0-9a-fA-F]/g, '');
+    let s = '';
+    /* 4-hex-digit groups are CIDs in a subset font; the low byte is
+       usually still the ASCII code, which is all the numbers need */
+    if (hex.length % 4 === 0 && hex.length >= 4 && /^00/.test(hex)) {
+      for (let i = 0; i < hex.length; i += 4) s += String.fromCharCode(parseInt(hex.substr(i, 4), 16));
+    } else {
+      for (let i = 0; i + 1 < hex.length; i += 2) s += String.fromCharCode(parseInt(hex.substr(i, 2), 16));
+    }
+    return s;
+  }
+  let s = '';
+  for (let i = 1; i < tok.length - 1; i++) {
+    const c = tok[i];
+    if (c !== '\\') { s += c; continue; }
+    const d = tok[++i];
+    if (d === 'n') s += '\n';
+    else if (d === 'r') s += '\r';
+    else if (d === 't') s += '\t';
+    else if (d >= '0' && d <= '7') {
+      let oct = d;
+      while (oct.length < 3 && tok[i + 1] >= '0' && tok[i + 1] <= '7') oct += tok[++i];
+      s += String.fromCharCode(parseInt(oct, 8));
+    } else s += d;
+  }
+  return s;
+}
+
+function tokenizeContent(src) {
+  const toks = [];
+  let i = 0;
+  while (i < src.length) {
+    const c = src[i];
+    if (/\s/.test(c)) { i++; continue; }
+    if (c === '%') { while (i < src.length && src[i] !== '\n') i++; continue; }
+    if (c === '(') {
+      let depth = 1, j = i + 1;
+      while (j < src.length && depth) {
+        if (src[j] === '\\') j++;
+        else if (src[j] === '(') depth++;
+        else if (src[j] === ')') depth--;
+        j++;
+      }
+      toks.push(src.slice(i, j)); i = j; continue;
+    }
+    if (c === '<' && src[i + 1] !== '<') {
+      const j = src.indexOf('>', i);
+      toks.push(src.slice(i, j + 1)); i = j + 1; continue;
+    }
+    if (c === '<' || c === '>') { toks.push(src.substr(i, 2)); i += 2; continue; }
+    if (c === '[' || c === ']' || c === '{' || c === '}') { toks.push(c); i++; continue; }
+    let j = i;
+    while (j < src.length && !/[\s()<>[\]{}/%]/.test(src[j])) j++;
+    if (src[i] === '/') { j = i + 1; while (j < src.length && !/[\s()<>[\]{}/%]/.test(src[j])) j++; }
+    toks.push(src.slice(i, Math.max(j, i + 1)));
+    i = Math.max(j, i + 1);
+  }
+  return toks;
+}
+
+function mul(a, b) {   /* 2x3 matrix concat, PDF order */
+  return [a[0]*b[0]+a[1]*b[2], a[0]*b[1]+a[1]*b[3],
+          a[2]*b[0]+a[3]*b[2], a[2]*b[1]+a[3]*b[3],
+          a[4]*b[0]+a[5]*b[2]+b[4], a[4]*b[1]+a[5]*b[3]+b[5]];
+}
+function apply(m, x, y) { return [m[0]*x + m[2]*y + m[4], m[1]*x + m[3]*y + m[5]]; }
+
+function readContent(src, page, fonts) {
+  const toks = tokenizeContent(src);
+  const texts = [], lines = [];
+  let ctm = [1,0,0,1,0,0], stack = [];
+  let tm = [1,0,0,1,0,0], tlm = [1,0,0,1,0,0], size = 10, leading = 0;
+  let cur = null, stackNums = [], font = null;
+
+  function num(k) { const v = +stackNums[stackNums.length - k]; return isFinite(v) ? v : 0; }
+  function decode(tok) {
+    /* a subset font's codes only mean something through its own map */
+    if (font && font.size) {
+      const hexish = tok[0] === '<';
+      let codes = [];
+      if (hexish) {
+        const hex = tok.slice(1, -1).replace(/[^0-9a-fA-F]/g, '');
+        const step = font.width * 2;
+        for (let i = 0; i < hex.length; i += step) codes.push(parseInt(hex.substr(i, step), 16));
+      } else {
+        const raw = decodePdfString(tok);
+        if (font.width === 2) {
+          for (let i = 0; i + 1 < raw.length; i += 2)
+            codes.push((raw.charCodeAt(i) << 8) | raw.charCodeAt(i + 1));
+        } else {
+          for (let i = 0; i < raw.length; i++) codes.push(raw.charCodeAt(i));
+        }
+      }
+      let hits = 0, out = '';
+      codes.forEach(function (c) {
+        const g = font.map[c];
+        if (g !== undefined) { out += g; hits++; } else out += ' ';
+      });
+      if (hits) return out;
+    }
+    return decodePdfString(tok);
+  }
+  function pushText(str) {
+    if (!str) return;
+    const m = mul(tm, ctm);
+    const p = apply(m, 0, 0);
+    const scale = Math.hypot(m[0], m[1]) || 1;
+    texts.push({ s: str, x: p[0], y: p[1], size: size * scale, page: page });
+    tm = mul([1,0,0,1, str.length * size * 0.5, 0], tm);   // rough advance
+  }
+
+  for (let i = 0; i < toks.length; i++) {
+    const t = toks[i];
+    if (/^[-+.\d]/.test(t) && isFinite(+t)) { stackNums.push(+t); continue; }
+    if (t[0] === '(' || t[0] === '<' && t.length > 1 && t[1] !== '<') { stackNums.push(t); continue; }
+    if (t[0] === '/') { stackNums.push(t); continue; }      // a name is an operand too
+    if (t === '[' || t === ']') continue;
+
+    switch (t) {
+      case 'q': stack.push(ctm.slice()); break;
+      case 'Q': if (stack.length) ctm = stack.pop(); break;
+      case 'cm': ctm = mul([num(6),num(5),num(4),num(3),num(2),num(1)], ctm); break;
+      case 'BT': tm = [1,0,0,1,0,0]; tlm = tm.slice(); break;
+      case 'ET': break;
+      case 'Tf': {
+        size = num(1);
+        const nm = stackNums.filter(function (v) { return typeof v === 'string' && v[0] === '/'; }).pop();
+        font = (nm && fonts) ? (fonts[nm.slice(1)] || null) : null;
+        break;
+      }
+      case 'TL': leading = num(1); break;
+      case 'Td': tlm = mul([1,0,0,1,num(2),num(1)], tlm); tm = tlm.slice(); break;
+      case 'TD': leading = -num(1); tlm = mul([1,0,0,1,num(2),num(1)], tlm); tm = tlm.slice(); break;
+      case 'Tm': tlm = [num(6),num(5),num(4),num(3),num(2),num(1)]; tm = tlm.slice(); break;
+      case 'T*': tlm = mul([1,0,0,1,0,-leading], tlm); tm = tlm.slice(); break;
+      case 'Tj': case "'": case '"': {
+        const s = stackNums[stackNums.length - 1];
+        if (typeof s === 'string') pushText(decode(s));
+        break;
+      }
+      case 'TJ': {
+        let out = '';
+        for (let k = 0; k < stackNums.length; k++)
+          if (typeof stackNums[k] === 'string' && stackNums[k][0] !== '/')
+            out += decode(stackNums[k]);
+        pushText(out);
+        break;
+      }
+      case 'm': cur = apply(ctm, num(2), num(1)); break;
+      case 'l': {
+        const p = apply(ctm, num(2), num(1));
+        if (cur) lines.push({ x0:cur[0], y0:cur[1], x1:p[0], y1:p[1], page:page });
+        cur = p;
+        break;
+      }
+      case 're': {
+        const w = num(2), h = num(1), x = num(4), y = num(3);
+        const a = apply(ctm, x, y), b = apply(ctm, x + w, y + h);
+        lines.push({ x0:a[0], y0:a[1], x1:b[0], y1:a[1], page:page });
+        lines.push({ x0:b[0], y0:a[1], x1:b[0], y1:b[1], page:page });
+        lines.push({ x0:b[0], y0:b[1], x1:a[0], y1:b[1], page:page });
+        lines.push({ x0:a[0], y0:b[1], x1:a[0], y1:a[1], page:page });
+        break;
+      }
+      default: break;
+    }
+    if (!/^[-+.\d]/.test(t)) stackNums = [];
+  }
+  return { texts: texts, lines: lines };
+}
+
+/* a dict value that may be `<< … >>` inline or `N 0 R` pointing at one */
+function resolveDict(objs, value) {
+  if (!value) return null;
+  if (value.indexOf('<<') >= 0) return value;
+  const n = refNums(value)[0];
+  return (n !== undefined && objs[n]) ? objs[n].dict : null;
+}
+
+/* /F1 -> its ToUnicode map, for every font the page uses */
+async function pageFonts(objs, bytes, pageDict) {
+  const out = {};
+  const res = resolveDict(objs, dictGet(pageDict, 'Resources'));
+  if (!res) return out;
+  const fdict = resolveDict(objs, dictGet(res, 'Font'));
+  if (!fdict) return out;
+  const rx = /\/([A-Za-z0-9_.\-]+)\s+(\d+)\s+\d+\s+R/g;
+  let m;
+  while ((m = rx.exec(fdict))) {
+    const name = m[1], fo = objs[+m[2]];
+    if (!fo) continue;
+    const tu = refNums(dictGet(fo.dict, 'ToUnicode'))[0];
+    if (tu === undefined || !objs[tu] || !objs[tu].stream) continue;
+    const so = objs[tu];
+    const dec = await applyFilters(bytes.subarray(so.stream.from, so.stream.to), so.dict);
+    if (!dec.data) continue;
+    const parsed = parseToUnicode(latin1(dec.data));
+    if (parsed.size) out[name] = parsed;
+  }
+  return out;
+}
+
+/* ---------------------------------------------------------------------
+   readPdf — bytes in, page tokens out
+   ------------------------------------------------------------------- */
+async function readPdf(input) {
+  const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
+  const head = latin1(bytes, 0, 1024);
+  if (head.indexOf('%PDF') < 0) {
+    return { ok: false, reason: 'That file does not start with %PDF — it is not a PDF.',
+             pages: [], texts: [], lines: [] };
+  }
+  const objs = await expandObjectStreams(scanObjects(bytes), bytes);
+
+  /* pages in document order */
+  const pageNums = Object.keys(objs)
+    .filter(function (k) { return /\/Type\s*\/Page\b/.test(objs[k].dict); })
+    .map(Number).sort(function (a, b) { return a - b; });
+
+  const pages = [];
+  let texts = [], lines = [], imageOnly = 0;
+  const unsupportedFilters = {};
+
+  for (let pi = 0; pi < Math.min(pageNums.length, READ.maxPages); pi++) {
+    const po = objs[pageNums[pi]];
+    const box = (dictGet(po.dict, 'MediaBox') || '[0 0 595 842]')
+      .replace(/[[\]]/g, '').trim().split(/\s+/).map(Number);
+    const contents = refNums(dictGet(po.dict, 'Contents'));
+    let src = '';
+    for (const cn of contents) {
+      const co = objs[cn];
+      if (!co || !co.stream) continue;
+      const dec = await applyFilters(bytes.subarray(co.stream.from, co.stream.to), co.dict);
+      if (!dec.data) {
+        dec.unsupported.forEach(function (u) { unsupportedFilters[u] = true; });
+        continue;
+      }
+      src += latin1(dec.data) + '\n';
+    }
+    const fonts = await pageFonts(objs, bytes, po.dict);
+    const got = readContent(src, pi + 1, fonts);
+    const hasImage = /\/[A-Za-z0-9]+\s+Do\b/.test(src);
+    if (!got.texts.length && hasImage) imageOnly++;
+    pages.push({
+      page: pi + 1,
+      widthPt: (box[2] - box[0]) || 595,
+      heightPt: (box[3] - box[1]) || 842,
+      texts: got.texts.length, lines: got.lines.length, imageOnly: !got.texts.length && hasImage
+    });
+    texts = texts.concat(got.texts);
+    lines = lines.concat(got.lines);
+    if (texts.length > READ.maxTextTokens) break;
+  }
+
+  const ok = texts.length > 0;
+  return {
+    ok: ok,
+    reason: ok ? null
+      : (Object.keys(unsupportedFilters).length
+          ? 'This PDF compresses its drawing with ' +
+            Object.keys(unsupportedFilters).join(' and ') +
+            ', which this reader does not decode. Enter the grid by hand on page 1.'
+          : imageOnly
+          ? 'This looks like a scanned drawing — ' + imageOnly + ' page(s) hold an image and no ' +
+            'text. Nothing can be read off it without OCR, so enter the grid by hand on page 1.'
+          : 'No text was found in this PDF, so there are no dimensions to read.'),
+    pageCount: pageNums.length,
+    unsupportedFilters: Object.keys(unsupportedFilters),
+    pages: pages, texts: texts, lines: lines
+  };
+}
+
+/* ---------------------------------------------------------------------
+   INFERENCE — read the sheet the way a person does, from the numbers
+   lettered on it. Every find carries the text it came from.
+   ------------------------------------------------------------------- */
+function found(value, confidence, from) {
+  return { value: value, verified: false, confidence: confidence, from: from };
+}
+
+function joinNearby(texts) {
+  /* CAD writes a label in several Tj calls; stitch tokens sharing a line */
+  const byLine = {};
+  texts.forEach(function (t) {
+    const k = t.page + ':' + Math.round(t.y / 3);
+    (byLine[k] = byLine[k] || []).push(t);
+  });
+  return Object.keys(byLine).map(function (k) {
+    const row = byLine[k].sort(function (a, b) { return a.x - b.x; });
+    return { page: row[0].page, y: row[0].y, x: row[0].x,
+             s: row.map(function (t) { return t.s; }).join(' ').replace(/\s+/g, ' ').trim(),
+             tokens: row };
+  }).sort(function (a, b) {         // sheet reading order, so "the line below" means something
+    return a.page - b.page || b.y - a.y || a.x - b.x;
+  });
+}
+
+/* the longest run of believable span numbers sharing a row (or a column) */
+function dimensionChain(texts, axis) {
+  const nums = texts.filter(function (t) {
+    const v = +String(t.s).replace(/[^\d.]/g, '');
+    return /^\d{3,5}(\.\d+)?$/.test(String(t.s).trim()) &&
+           v >= READ.span.minMm && v <= READ.span.maxMm;
+  });
+  const key = axis === 'x' ? 'y' : 'x';
+  const along = axis === 'x' ? 'x' : 'y';
+  const groups = {};
+  nums.forEach(function (t) {
+    const k = t.page + ':' + Math.round(t[key] / READ.chain.alignTolPt);
+    (groups[k] = groups[k] || []).push(t);
+  });
+  let best = null;
+  Object.keys(groups).forEach(function (k) {
+    const g = groups[k].slice().sort(function (a, b) { return a[along] - b[along]; });
+    if (g.length < READ.chain.minLinks) return;
+    if (!best || g.length > best.length) best = g;
+  });
+  if (!best) return null;
+  if (axis === 'y') best = best.slice().reverse();      // sheets read top-down
+  return {
+    bays: best.map(function (t) { return Math.round(+String(t.s).replace(/[^\d.]/g, '')); }),
+    from: best.map(function (t) { return t.s; }).join(' · ') +
+          '  (page ' + best[0].page + ', ' + best.length + ' numbers in a ' +
+          (axis === 'x' ? 'row' : 'column') + ')'
+  };
+}
+
+function firstMatch(lines, rx, pick) {
+  for (const L of lines) {
+    const m = L.s.match(rx);
+    if (m) return { m: m, from: L.s.trim() + '  (page ' + L.page + ')' };
+  }
+  return null;
+}
+
+function sectionNear(lines, words, lo, hi) {
+  /* a `300 x 450` on a line that also mentions the member */
+  const rx = /(\d{2,4})\s*[x×X]\s*(\d{2,4})/;
+  for (const L of lines) {
+    const up = L.s.toUpperCase();
+    if (!words.some(function (w) { return up.indexOf(w) >= 0; })) continue;
+    const m = L.s.match(rx);
+    if (!m) continue;
+    const a = +m[1], b = +m[2];
+    if (a < lo || a > hi || b < lo || b > hi) continue;
+    return found({ widthMm: Math.min(a, b), depthMm: Math.max(a, b) }, 'read',
+                 L.s.trim() + '  (page ' + L.page + ')');
+  }
+  return null;
+}
+
+function barsNear(lines, words) {
+  /* `8 DIA @ 150 C/C`, `Ø10 @ 125 c/c`, `4 NOS 16 DIA`.
+     A schedule normally letters the member on one line and its steel on
+     the next, so a header match also looks at the two lines under it. */
+  const spacing = /(?:Ø|φ|DIA\.?\s*)?\s*(\d{1,2})\s*(?:mm)?\s*(?:Ø|φ|DIA\.?)?\s*@\s*(\d{2,3})/i;
+  const count = /(\d{1,2})\s*(?:NOS?\.?|no\.?|#)\s*(?:Ø|φ)?\s*(\d{1,2})\s*(?:mm)?\s*(?:Ø|φ|DIA\.?)?/i;
+  const LOOK_BELOW = 2;
+  function read(L, headerFrom) {
+    const src = L.s.trim() + '  (page ' + L.page + ')' +
+                (headerFrom ? '  under “' + headerFrom + '”' : '');
+    const c = L.s.match(count);
+    if (c && +c[2] >= 6) return found({ dia: +c[2], count: +c[1] }, 'read', src);
+    const s = L.s.match(spacing);
+    if (s && +s[1] >= 6) return found({ dia: +s[1], spacingMm: +s[2] }, 'read', src);
+    return null;
+  }
+  for (let i = 0; i < lines.length; i++) {
+    const L = lines[i], up = L.s.toUpperCase();
+    if (!words.some(function (w) { return up.indexOf(w) >= 0; })) continue;
+    const here = read(L, null);
+    if (here) return here;
+    for (let k = 1; k <= LOOK_BELOW && i + k < lines.length; k++) {
+      const N = lines[i + k];
+      if (N.page !== L.page || N.y > L.y) break;
+      const below = read(N, L.s.trim().slice(0, 40));
+      if (below) return below;
+    }
+  }
+  return null;
+}
+
+function inferPlan(read) {
+  const lines = joinNearby(read.texts);
+  const out = { fields: {}, notes: [], sheet: { pages: read.pageCount, texts: read.texts.length,
+                                                lines: read.lines.length } };
+  function set(k, v) { if (v) out.fields[k] = v; else out.notes.push('Not found on the sheet: ' + k); }
+
+  const cx = dimensionChain(read.texts, 'x');
+  const cy = dimensionChain(read.texts, 'y');
+  set('baysX', cx ? found(cx.bays, 'read', cx.from) : null);
+  set('baysY', cy ? found(cy.bays, 'read', cy.from) : null);
+
+  const fl = firstMatch(lines, /\bG\s*\+\s*(\d)\b/i) ||
+             firstMatch(lines, /\b(\d)\s*(?:STOREY|STORIED|FLOORS?)\b/i);
+  set('floors', fl ? found(/G/i.test(fl.m[0]) ? +fl.m[1] + 1 : +fl.m[1], 'read', fl.from) : null);
+
+  const fh = firstMatch(lines, /(?:FLOOR|STOREY|STORY)\s*(?:HEIGHT|HT\.?)\s*[:=]?\s*(\d{4})/i) ||
+             firstMatch(lines, /\b(?:HEIGHT|HT\.?)\s*[:=]?\s*(\d{4})\b/i);
+  set('floorHeightMm', fh && +fh.m[1] >= READ.height.minMm && +fh.m[1] <= READ.height.maxMm
+      ? found(+fh.m[1], 'read', fh.from) : null);
+
+  set('column', sectionNear(lines, ['COLUMN', 'COL.', 'C1'], READ.section.minMm, READ.section.maxMm));
+  set('beam',   sectionNear(lines, ['BEAM', 'B1'],            READ.section.minMm, READ.section.maxMm));
+
+  const st = firstMatch(lines, /SLAB[^\d]{0,20}(\d{2,3})\s*(?:THK|THICK|mm)?/i) ||
+             firstMatch(lines, /(\d{2,3})\s*(?:THK|THICK)[^\w]{0,4}SLAB/i);
+  set('slabThicknessMm', st && +st.m[1] >= READ.thickness.minMm && +st.m[1] <= READ.thickness.maxMm
+      ? found(+st.m[1], 'read', st.from) : null);
+
+  const ftm = firstMatch(lines, /(\d{3,4})\s*[x×X]\s*(\d{3,4})\s*[x×X]\s*(\d{3,4})/);
+  set('footing', ftm ? found({ lengthMm: +ftm.m[1], widthMm: +ftm.m[2], depthMm: +ftm.m[3] },
+                             'read', ftm.from) : null);
+
+  const cv = firstMatch(lines, /(?:CLEAR\s*)?COVER[^\d]{0,12}(\d{2})/i);
+  set('coverMm', cv && +cv.m[1] >= READ.cover.minMm && +cv.m[1] <= READ.cover.maxMm
+      ? found(+cv.m[1], 'read', cv.from) : null);
+
+  const gr = firstMatch(lines, /\bM\s?(\d{2})\b/);
+  if (gr) out.fields.concreteGrade = found('M' + gr.m[1], 'read', gr.from);
+  const sg = firstMatch(lines, /\bFe\s?(\d{3})\b/i);
+  if (sg) out.fields.steelGrade = found('Fe' + sg.m[1], 'read', sg.from);
+
+  set('columnBars', barsNear(lines, ['COLUMN', 'COL.', 'C1']));
+  set('columnTies', barsNear(lines, ['TIE', 'TIES', 'LATERAL']));
+  set('beamBottom', barsNear(lines, ['BOTTOM', 'BOT.']));
+  set('beamStirrups', barsNear(lines, ['STIRRUP', 'STIRRUPS']));
+  set('slabBars', barsNear(lines, ['SLAB', 'BOTH WAYS']));
+  set('footingBars', barsNear(lines, ['FOOTING', 'F1', 'FOUNDATION']));
+
+  out.lines = lines;
+  return out;
+}
+
+/* ---------------------------------------------------------------------
+   SEAM — the inferred fields become a frame spec for the detailing
+   engine. Anything the sheet did not give is filled from `fallback` and
+   labelled as such, so a default is never mistaken for a reading.
+   ------------------------------------------------------------------- */
+function planToFrameSpec(plan, fallback) {
+  const f = plan.fields, fb = fallback || {};
+  const used = {};
+  function pick(key, def) {
+    if (f[key]) { used[key] = { source: 'sheet', from: f[key].from }; return f[key].value; }
+    used[key] = { source: 'default', from: 'not on the sheet — default used' };
+    return def;
+  }
+  const spec = {
+    baysXMm: pick('baysX', fb.baysXMm || [3000, 3000]),
+    baysYMm: pick('baysY', fb.baysYMm || [3000, 3000]),
+    floors: pick('floors', fb.floors || 1),
+    floorHeightMm: pick('floorHeightMm', fb.floorHeightMm || 3000),
+    column: pick('column', fb.column || { widthMm: 300, depthMm: 450 }),
+    beam: pick('beam', fb.beam || { widthMm: 230, depthMm: 450 }),
+    slab: { thicknessMm: pick('slabThicknessMm', (fb.slab || {}).thicknessMm || 125) },
+    footing: pick('footing', fb.footing || { lengthMm: 1500, widthMm: 1500, depthMm: 450 })
+  };
+  return { spec: spec, provenance: used };
+}
+
+/* ------------------------------------------------------------------- */
+const PLAN = {
+  READ: READ,
+  readPdf: readPdf,
+  inferPlan: inferPlan,
+  planToFrameSpec: planToFrameSpec,
+  helpers: { latin1: latin1, inflate: inflate, scanObjects: scanObjects,
+             ascii85Decode: ascii85Decode, asciiHexDecode: asciiHexDecode,
+             parseToUnicode: parseToUnicode, applyFilters: applyFilters,
+             dictGet: dictGet, tokenizeContent: tokenizeContent,
+             decodePdfString: decodePdfString, joinNearby: joinNearby,
+             dimensionChain: dimensionChain }
+};
+
+if (typeof module !== 'undefined' && module.exports) module.exports = PLAN;
+/* PLAN:END */
+</script>
 
 <script id="engine">
 /* ENGINE:BEGIN — generated from src/bbs.js by tools/inline.js. Do not edit here. */
@@ -2854,10 +3756,476 @@ function syncCageToOpenMark(){
   cageDraw();
 }
 
+/* ================================================================== */
+/* PAGE 2 — a plan PDF read, reviewed, then handed to the same engine  */
+/*                                                                     */
+/* The two pages keep separate documents. `state` is a pointer, so the  */
+/* schedule, summary and 3D code below is shared verbatim and only the  */
+/* data behind it changes. The results block is one DOM subtree that    */
+/* moves into whichever page is showing.                               */
+/* ================================================================== */
+var PAGES = {
+  page1: state,
+  page2: { members: [], group:'member', open:null, out:null,
+           frame:null, assembly:null, frameSig:null }
+};
+var activePage = 'page1';
+var PDF = { file:null, read:null, plan:null, override:{}, spec:null, provenance:null };
+
+function showPage(id){
+  if (!PAGES[id]) return;
+  activePage = id;
+  state = PAGES[id];
+  Array.prototype.forEach.call(document.querySelectorAll('.page'), function(p){
+    p.classList.toggle('on', p.id === id);
+  });
+  Array.prototype.forEach.call($('#nav').children, function(b){
+    b.classList.toggle('on', b.dataset.p === id);
+  });
+  /* carry the one results block across, canvas and all */
+  var slot = $(id === 'page1' ? '#slot1' : '#slot2');
+  slot.appendChild($('#results'));
+  if (state.out){ rerender(); cageFrame(); cageDraw(); }
+  else { $('#results').style.display = 'none'; }
+  if (state.out) $('#results').style.display = '';
+  cageSize(); cageDraw();
+}
+$('#nav').addEventListener('click', function(e){
+  var b = e.target.closest('button[data-p]');
+  if (b) showPage(b.dataset.p);
+});
+
+/* ---- uploader ---------------------------------------------------- */
+function stage(pct, msg, cls){
+  $('#pdfstatus').innerHTML =
+    '<div class="' + (cls||'') + '">' + esc(msg) + '</div>' +
+    '<div class="bar"><i style="width:' + Math.round(pct) + '%"></i></div>';
+}
+
+function acceptFile(file){
+  if (!file) return;
+  var isPdf = /\.pdf$/i.test(file.name) || file.type === 'application/pdf';
+  if (!isPdf){
+    PDF.file = null; $('#btnProcess').disabled = true;
+    stage(0, file.name + ' is not a PDF. Export the drawing as a PDF and try again.', 'bad');
+    return;
+  }
+  var MAXMB = 40;
+  if (file.size > MAXMB * 1024 * 1024){
+    PDF.file = null; $('#btnProcess').disabled = true;
+    stage(0, file.name + ' is ' + (file.size/1048576).toFixed(1) + ' MB — over the ' + MAXMB +
+             ' MB this reader will take.', 'bad');
+    return;
+  }
+  PDF.file = file;
+  $('#pdfpages').innerHTML = '';
+  $('#btnProcess').disabled = false;
+  stage(12, file.name + ' · ' + (file.size/1024).toFixed(0) + ' KB · ready to read');
+  readFile();
+}
+
+async function readFile(){
+  var file = PDF.file;
+  if (!file) return;
+  try {
+    stage(30, 'Reading ' + file.name + ' …');
+    var buf = new Uint8Array(await file.arrayBuffer());
+    stage(55, 'Parsing objects and inflating streams …');
+    var read = await PLAN.readPdf(buf);
+    PDF.read = read;
+    if (!read.ok){
+      $('#btnProcess').disabled = true;
+      stage(100, read.reason, 'bad');
+      renderPdfPages(read);
+      return;
+    }
+    stage(80, 'Reading dimensions off the sheet …');
+    PDF.plan = PLAN.inferPlan(read);
+    PDF.override = {};
+    var got = Object.keys(PDF.plan.fields).length;
+    stage(100, read.pageCount + ' page(s) · ' + read.texts.length + ' text runs · ' +
+               read.lines.length + ' lines · ' + got + ' parameter(s) found' +
+               (PDF.plan.notes.length ? ' · ' + PDF.plan.notes.length + ' not on the sheet' : ''));
+    renderPdfPages(read);
+    renderParams();
+    $('#btnProcess').disabled = false;
+  } catch (err){
+    $('#btnProcess').disabled = true;
+    stage(100, 'That PDF could not be read: ' + (err && err.message ? err.message : err), 'bad');
+  }
+}
+
+/* what the reader actually saw, drawn from the geometry it parsed —
+   more use than a picture of the sheet, because it shows the input */
+function renderPdfPages(read){
+  $('#pdfpages').innerHTML = (read.pages||[]).map(function(p){
+    var W = p.widthPt || 595, H = p.heightPt || 842;
+    var segs = read.lines.filter(function(l){ return l.page === p.page; }).slice(0, 4000);
+    var body = segs.map(function(l){
+      return '<line x1="'+l.x0.toFixed(1)+'" y1="'+(H-l.y0).toFixed(1)+
+             '" x2="'+l.x1.toFixed(1)+'" y2="'+(H-l.y1).toFixed(1)+'"/>';
+    }).join('');
+    var dots = read.texts.filter(function(t){ return t.page === p.page; }).slice(0, 1200)
+      .map(function(t){
+        return '<circle cx="'+t.x.toFixed(1)+'" cy="'+(H-t.y).toFixed(1)+'" r="2.4"/>';
+      }).join('');
+    return '<div class="pdfpage">' +
+      '<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet">' +
+        '<g stroke="rgba(20,23,26,.62)" stroke-width="1.1" fill="none">'+body+'</g>' +
+        '<g fill="rgba(224,123,30,.65)">'+dots+'</g>' +
+      '</svg>' +
+      '<div class="cap"><b>Page '+p.page+'</b> · '+p.texts+' text · '+p.lines+' lines' +
+        (p.imageOnly ? ' · image only' : '') + '</div></div>';
+  }).join('') || '';
+}
+
+/* ---- extracted parameters ---------------------------------------- */
+var PARAM_ROWS = [
+  ['baysX',           'Bays across X (mm)',   'list'],
+  ['baysY',           'Bays along Y (mm)',    'list'],
+  ['floors',          'Floors',               'int'],
+  ['floorHeightMm',   'Floor height (mm)',    'int'],
+  ['column',          'Column w × d (mm)',    'wd'],
+  ['beam',            'Beam w × d (mm)',      'wd'],
+  ['slabThicknessMm', 'Slab thickness (mm)',  'int'],
+  ['footing',         'Footing L × W × D (mm)','lwd'],
+  ['coverMm',         'Clear cover (mm)',     'int'],
+  ['columnBars',      'Column main bars',     'bars'],
+  ['columnTies',      'Column ties',          'bars'],
+  ['beamBottom',      'Beam bottom bars',     'bars'],
+  ['beamStirrups',    'Beam stirrups',        'bars'],
+  ['slabBars',        'Slab bars',            'bars'],
+  ['footingBars',     'Footing bars',         'bars'],
+  ['concreteGrade',   'Concrete grade',       'text'],
+  ['steelGrade',      'Steel grade',          'text']
+];
+
+function fmtParam(kind, v){
+  if (v === undefined || v === null) return '';
+  if (kind === 'list') return v.join(', ');
+  if (kind === 'wd')   return v.widthMm + ' x ' + v.depthMm;
+  if (kind === 'lwd')  return v.lengthMm + ' x ' + v.widthMm + ' x ' + v.depthMm;
+  if (kind === 'bars') return (v.count ? v.count + ' nos ' : '') + v.dia + ' dia' +
+                              (v.spacingMm ? ' @ ' + v.spacingMm : '');
+  return String(v);
+}
+function parseParam(kind, s){
+  var n = (s.match(/\d+(\.\d+)?/g) || []).map(Number);
+  if (kind === 'list') return n.length ? n : null;
+  if (kind === 'int')  return n.length ? n[0] : null;
+  if (kind === 'wd')   return n.length >= 2 ? { widthMm:n[0], depthMm:n[1] } : null;
+  if (kind === 'lwd')  return n.length >= 3 ? { lengthMm:n[0], widthMm:n[1], depthMm:n[2] } : null;
+  if (kind === 'bars'){
+    if (/nos/i.test(s) && n.length >= 2) return { count:n[0], dia:n[1] };
+    if (/@/.test(s) && n.length >= 2) return { dia:n[0], spacingMm:n[1] };
+    return n.length ? { dia:n[0] } : null;
+  }
+  return s.trim() || null;
+}
+
+function paramValue(key){
+  if (PDF.override[key] !== undefined) return PDF.override[key];
+  var f = PDF.plan && PDF.plan.fields[key];
+  return f ? f.value : undefined;
+}
+
+function renderParams(){
+  if (!PDF.plan){ $('#params').innerHTML = ''; return; }
+  var h = ['<thead><tr><th>Parameter</th><th>Source</th><th>Where it came from</th>' +
+           '<th>Use this</th></tr></thead><tbody>'];
+  var sheet = 0, edited = 0, missing = 0;
+  PARAM_ROWS.forEach(function(row){
+    var key = row[0], label = row[1], kind = row[2];
+    var f = PDF.plan.fields[key];
+    var over = PDF.override[key] !== undefined;
+    var tag = over ? '<span class="tag edited">edited</span>'
+            : f    ? '<span class="tag sheet">sheet</span>'
+                   : '<span class="tag">not found</span>';
+    if (over) edited++; else if (f) sheet++; else missing++;
+    h.push('<tr><td>' + esc(label) + '</td><td>' + tag + '</td>' +
+      '<td class="src">' + (f ? esc(f.from) : 'nothing on the sheet matched — type a value or leave it to the default') + '</td>' +
+      '<td><input data-k="' + key + '" data-kind="' + kind + '" value="' +
+        esc(fmtParam(kind, paramValue(key))) + '" spellcheck="false"></td></tr>');
+  });
+  h.push('</tbody>');
+  $('#params').innerHTML = h.join('');
+  $('#paramnote').textContent = sheet + ' read · ' + edited + ' edited · ' + missing +
+    ' not found · nothing is verified until you press Process';
+}
+
+$('#params').addEventListener('change', function(e){
+  var el = e.target;
+  if (!el.dataset || !el.dataset.k) return;
+  var v = parseParam(el.dataset.kind, el.value);
+  var f = PDF.plan && PDF.plan.fields[el.dataset.k];
+  if (v === null || (f && fmtParam(el.dataset.kind, f.value) === el.value.trim()))
+    delete PDF.override[el.dataset.k];
+  else PDF.override[el.dataset.k] = v;
+  renderParams();
+});
+
+/* ---- process: the read sheet becomes the same frame as page 1 ----- */
+function processPlan(){
+  if (!PDF.plan) return;
+  var eff = { fields: {}, notes: PDF.plan.notes };
+  PARAM_ROWS.forEach(function(row){
+    var key = row[0], v = paramValue(key);
+    if (v === undefined || v === null) return;
+    var f = PDF.plan.fields[key];
+    eff.fields[key] = { value: v, verified: true,
+      confidence: PDF.override[key] !== undefined ? 'confirmed by hand' : 'read then confirmed',
+      from: PDF.override[key] !== undefined ? 'typed on page 2' : (f ? f.from : 'typed on page 2') };
+  });
+
+  var built = PLAN.planToFrameSpec(eff, {});
+  PDF.spec = built.spec; PDF.provenance = built.provenance;
+
+  function bars(key, fallback){
+    var v = eff.fields[key] ? eff.fields[key].value : null;
+    return v || fallback;
+  }
+  var cb = bars('columnBars', { dia:20, count:6 });
+  var ct = bars('columnTies', { dia:8, spacingMm:150 });
+  var bb = bars('beamBottom', { dia:16, count:4 });
+  var bs = bars('beamStirrups', { dia:8, spacingMm:150 });
+  var sb = bars('slabBars', { dia:10, spacingMm:150 });
+  var fb = bars('footingBars', { dia:12, spacingMm:150 });
+  function barSpec(label, position, along, v, end){
+    var o = { label:label, position:position, dia:v.dia, end:end };
+    if (along) o.along = along;
+    if (v.count) o.count = v.count; else o.spacingMm = v.spacingMm || 150;
+    return o;
+  }
+  var F = BBS.frame(Object.assign({}, PDF.spec, {
+    template: {
+      footing: { bars: [ barSpec('Bottom X','bottom','length', fb, 'bend'),
+                         barSpec('Bottom Y','bottom','width',  fb, 'bend') ] },
+      column:  { bars: [ Object.assign(barSpec('Vertical','main',null, cb, 'continuous'),
+                          { laps:1, lapType:'compression' }) ],
+                 stirrups: { shape:'STIRRUP_RECT', dia:ct.dia, spacingMm:ct.spacingMm||150, legs:2 } },
+      beam:    { bars: [ barSpec('Bottom main','bottom',null, bb, 'hook') ],
+                 stirrups: { shape:'STIRRUP_RECT', dia:bs.dia, spacingMm:bs.spacingMm||150, legs:2 } },
+      slab:    { bars: [ barSpec('Short span','bottom','length', sb, 'hook'),
+                         barSpec('Long span','bottom','width',  sb, 'hook') ] }
+    }
+  }));
+
+  var cover = eff.fields.coverMm ? eff.fields.coverMm.value : null;
+  F.members.forEach(function(m){
+    if (cover && m.type === 'column') m.coverMm = cover;
+    (m.bars||[]).forEach(function(b){ b._by = (b.count !== undefined) ? 'count' : 'spacing'; });
+  });
+
+  var doc = PAGES.page2;
+  doc.members = F.members;
+  doc.assembly = F.assembly;
+  doc.frame = { baysX: PDF.spec.baysXMm.length, baysY: PDF.spec.baysYMm.length,
+                floors: PDF.spec.floors };
+  doc.frameSig = frameSignature(F.members);
+  doc.open = null;
+  state = doc;
+  CG.member = 0; CG.mode = 'building';
+  Array.prototype.forEach.call($('#cagemode').children, function(x){
+    x.classList.toggle('on', x.dataset.m === 'building');
+  });
+  $('#results').style.display = '';
+  rerender(); cageFrame(); cageDraw();
+  renderReview(F);
+  renderParams();
+  $('#results').scrollIntoView({ block:'start' });
+}
+$('#btnProcess').addEventListener('click', processPlan);
+
+/* ---- design review ------------------------------------------------
+   Code-based checks, not a model. Every limit cited so it can be
+   argued with. Rates are commercial, not code, so they are shown as
+   the assumptions they are.
+   ------------------------------------------------------------------ */
+var REVIEW = {
+  spanDepth:     { simplySupported: 20, continuous: 26 },   // IS 456 cl 23.2.1
+  slabSpanDepth: { twoWayContinuous: 32 },                  // IS 456 cl 23.2.1
+  columnSlender: { shortLimit: 12 },                        // IS 456 cl 25.1.2
+  columnSteelPct:{ min: 0.8, max: 6.0 },                    // IS 456 cl 26.5.3.1
+  slabSteelPct:  { minHysd: 0.12 },                         // IS 456 cl 26.5.2.1
+  bay:           { economicalMinMm: 3000, economicalMaxMm: 7500 },
+  rates:         { steelPerKg: 72, concretePerM3: 7200, currency: '₹' }
+};
+
+function renderReview(F){
+  var out = state.out, cards = [];
+  function card(flag, title, body, cite){
+    cards.push('<div class="rv' + (flag ? ' flag' : '') + '"><h4>' + esc(title) + '</h4><p>' +
+      body + '</p>' + (cite ? '<u>' + esc(cite) + '</u>' : '') + '</div>');
+  }
+  var spec = PDF.spec;
+  var maxBayX = Math.max.apply(null, spec.baysXMm);
+  var maxBayY = Math.max.apply(null, spec.baysYMm);
+  var maxBay = Math.max(maxBayX, maxBayY);
+
+  /* 1. bay sizes */
+  var bayFlag = maxBay > REVIEW.bay.economicalMaxMm || maxBay < REVIEW.bay.economicalMinMm;
+  card(bayFlag, 'Grid',
+    'Largest bay <b>' + maxBay + ' mm</b> across a ' + spec.baysXMm.length + ' × ' +
+    spec.baysYMm.length + ' grid on ' + spec.floors + ' floor(s). ' +
+    (bayFlag ? 'Outside the ' + REVIEW.bay.economicalMinMm + '–' + REVIEW.bay.economicalMaxMm +
+      ' mm range that usually gives an economical slab and beam; expect deeper beams or an extra column line.'
+      : 'Inside the range that usually gives an economical slab and beam.'),
+    'Rule of thumb, not a code limit');
+
+  /* 2. beam span / depth, IS 456 cl 23.2.1 */
+  var beams = out.members.filter(function(m){ return m.type === 'beam'; });
+  beams.forEach(function(m){
+    var L = m.concrete.spanMm, D = m.concrete.depthMm;
+    var eff = D - m.coverMm - 8 - 8;
+    var ratio = L / eff, lim = REVIEW.spanDepth.continuous;
+    card(ratio > lim, 'Beam ' + m.id + ' span / depth',
+      'Clear span <b>' + L + '</b> over effective depth <b>' + Math.round(eff) + '</b> = <b>' +
+      ratio.toFixed(1) + '</b> against a limit of ' + lim + ' for a continuous beam. ' +
+      (ratio > lim ? 'Deflection will govern — deepen the beam or add a support.'
+                   : 'Within the span-to-depth limit.'),
+      'IS 456 cl 23.2.1 (continuous ' + REVIEW.spanDepth.continuous +
+      ', simply supported ' + REVIEW.spanDepth.simplySupported + ')');
+  });
+
+  /* 3. slab thickness against the shorter span */
+  out.members.filter(function(m){ return /slab/i.test(m.type); }).forEach(function(m){
+    var L = Math.min(m.concrete.lengthMm, m.concrete.widthMm);
+    var need = L / REVIEW.slabSpanDepth.twoWayContinuous;
+    card(m.concrete.thicknessMm < need, 'Slab ' + m.id + ' thickness',
+      'Shorter span <b>' + L + ' mm</b> wants about <b>' + Math.round(need) +
+      ' mm</b> of depth; the sheet gives <b>' + m.concrete.thicknessMm + ' mm</b>. ' +
+      (m.concrete.thicknessMm < need ? 'Thin for the span — check deflection.' : 'Adequate on span / depth.'),
+      'IS 456 cl 23.2.1, span/' + REVIEW.slabSpanDepth.twoWayContinuous + ' for a two-way continuous slab');
+  });
+
+  /* 4. column slenderness and steel percentage */
+  out.members.filter(function(m){ return m.type === 'column'; }).forEach(function(m){
+    var least = Math.min(m.concrete.widthMm, m.concrete.depthMm);
+    var sl = m.concrete.heightMm / least;
+    card(sl > REVIEW.columnSlender.shortLimit, 'Column ' + m.id + ' slenderness',
+      'Height <b>' + m.concrete.heightMm + '</b> over least dimension <b>' + least + '</b> = <b>' +
+      sl.toFixed(1) + '</b>. ' + (sl > REVIEW.columnSlender.shortLimit
+        ? 'Over ' + REVIEW.columnSlender.shortLimit + ', so it is a slender column and must be designed as one.'
+        : 'Under ' + REVIEW.columnSlender.shortLimit + ', so it may be treated as a short column.'),
+      'IS 456 cl 25.1.2');
+
+    var Ag = m.concrete.widthMm * m.concrete.depthMm;
+    var As = 0;
+    (m.rows||[]).forEach(function(r){
+      if (r.position === 'stirrup') return;
+      As += r.barsPerMember * Math.PI * r.dia * r.dia / 4;
+    });
+    var pct = As / Ag * 100;
+    var bad = pct < REVIEW.columnSteelPct.min || pct > REVIEW.columnSteelPct.max;
+    card(bad, 'Column ' + m.id + ' steel',
+      'Longitudinal steel <b>' + pct.toFixed(2) + '%</b> of the gross section. ' +
+      (pct < REVIEW.columnSteelPct.min ? 'Below the ' + REVIEW.columnSteelPct.min + '% minimum.'
+       : pct > REVIEW.columnSteelPct.max ? 'Above the ' + REVIEW.columnSteelPct.max +
+         '% maximum — over-reinforced, and the bars will not fit at a lap.'
+       : 'Between the ' + REVIEW.columnSteelPct.min + '% and ' + REVIEW.columnSteelPct.max + '% limits.'),
+      'IS 456 cl 26.5.3.1');
+  });
+
+  /* 5. what the engine already flagged, carried through */
+  if (out.warnings.length)
+    card(true, 'Detailing checks from the schedule',
+      '<b>' + out.warnings.length + '</b> check(s) fired while scheduling this frame — cover, ' +
+      'spacing, congestion, lap zones, stock length or steel ratio. They are listed in full under ' +
+      'Checks below.', 'See the Checks panel');
+
+  /* 6. cost, on stated rates */
+  var steelKg = out.summary.grossKg, m3 = out.summary.concreteM3;
+  var cs = steelKg * REVIEW.rates.steelPerKg, cc = m3 * REVIEW.rates.concretePerM3;
+  card(false, 'Order and cost',
+    'Steel <b>' + n2(steelKg) + ' kg</b> (' + n3(out.summary.grossTonnes) + ' t) and concrete <b>' +
+    n3(m3) + ' m³</b> at <b>' + n2(out.summary.steelPerM3) + ' kg/m³</b>.<br>' +
+    'At ' + REVIEW.rates.currency + REVIEW.rates.steelPerKg + '/kg and ' +
+    REVIEW.rates.currency + REVIEW.rates.concretePerM3 + '/m³ that is ' +
+    REVIEW.rates.currency + Math.round(cs).toLocaleString('en-IN') + ' of steel and ' +
+    REVIEW.rates.currency + Math.round(cc).toLocaleString('en-IN') + ' of concrete, ' +
+    '<b>' + REVIEW.rates.currency + Math.round(cs + cc).toLocaleString('en-IN') + '</b> together.',
+    'Rates are placeholders in REVIEW.rates, not quotations — replace them with your own');
+
+  $('#review').innerHTML = cards.join('');
+  $('#reviewnote').textContent = cards.filter(function(c){ return /class="rv flag/.test(c); }).length +
+    ' item(s) to look at · code-based checks, not a model';
+}
+
+/* ---- drag and drop ----------------------------------------------- */
+(function(){
+  var drop = $('#drop');
+  ['dragenter','dragover'].forEach(function(ev){
+    drop.addEventListener(ev, function(e){ e.preventDefault(); drop.classList.add('hot'); });
+  });
+  ['dragleave','dragend','drop'].forEach(function(ev){
+    drop.addEventListener(ev, function(){ drop.classList.remove('hot'); });
+  });
+  drop.addEventListener('drop', function(e){
+    e.preventDefault();
+    var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    acceptFile(f);
+  });
+  drop.addEventListener('click', function(){ $('#pdfFile').click(); });
+  drop.addEventListener('keydown', function(e){
+    if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); $('#pdfFile').click(); }
+  });
+  $('#btnBrowse').addEventListener('click', function(e){ e.stopPropagation(); $('#pdfFile').click(); });
+  $('#pdfFile').addEventListener('change', function(e){ acceptFile(e.target.files[0]); });
+  /* the whole window, so a miss near the panel still lands */
+  window.addEventListener('dragover', function(e){ e.preventDefault(); });
+  window.addEventListener('drop', function(e){ e.preventDefault(); });
+})();
+
+/* ---- CSV, which Excel opens natively ----------------------------- */
+function csv(){
+  var s = state.out.summary, L = [];
+  function row(a){ return a.map(function(v){
+    v = String(v === undefined || v === null ? '' : v);
+    return /[",\n]/.test(v) ? '"' + v.replace(/"/g,'""') + '"' : v;
+  }).join(','); }
+  L.push(row(['Project', $('#pName').value, 'Member set', $('#pSet').value,
+              'Date', $('#pDate').value, 'Revision', $('#pRev').value]));
+  L.push('');
+  L.push(row(['Mark','Member','Member type','Bar','Shape','Dia mm','Bars per member','Members',
+              'Total bars','Cutting length m','Total length m','Unit weight kg/m','Weight kg','Derivation']));
+  state.out.schedule.forEach(function(r){
+    L.push(row([r.mark, r.memberId, r.memberLabel, r.label, r.shape, r.dia, r.barsPerMember,
+                r.members, r.totalBars, n3(r.cuttingLengthM), n3(r.totalLengthM),
+                n3(r.unitWeightKgPerM), n2(r.totalWeightKg), r.derivation]));
+  });
+  L.push('');
+  L.push(row(['Diameter','Marks','Bars','Length m','kg/m','Weight kg','Tonnes']));
+  s.byDiameter.forEach(function(g){
+    L.push(row(['Ø' + g.dia, g.marks, g.totalBars, n2(g.lengthM), n3(g.unitWeightKgPerM),
+                n2(g.weightKg), n3(g.weightKg/CODE.units.kgPerTonne)]));
+  });
+  L.push('');
+  L.push(row(['Net steel kg', n2(s.netKg)]));
+  L.push(row(['Wastage ' + s.wastagePct + '% kg', n2(s.wastageKg)]));
+  L.push(row(['Order quantity kg', n2(s.grossKg)]));
+  L.push(row(['Order quantity tonnes', n3(s.grossTonnes)]));
+  L.push(row(['Concrete m3', n3(s.concreteM3)]));
+  L.push(row(['Steel kg per m3', n2(s.steelPerM3), s.steelRatioFlag]));
+  return L.join('\r\n');
+}
+
+function downloadCsv(){
+  var name = 'bbs-' + (($('#pSet').value || 'schedule').replace(/[^\w-]+/g,'-')) + '.csv';
+  var blob = new Blob(['﻿' + csv()], { type:'text/csv;charset=utf-8' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
+  $('#barnote').textContent = 'Saved ' + name + ' — opens straight in Excel.';
+}
+$('#btnCsv').addEventListener('click', downloadCsv);
+
 $('#btnFrame').addEventListener('click', buildFrame);
 
 $('#pDate').value = new Date().toISOString().slice(0,10);
 cageInit();
+showPage('page1');
 buildFrame();               // a whole building on first load, not an empty canvas
 setView('iso');
 })();

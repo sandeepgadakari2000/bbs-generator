@@ -1,12 +1,15 @@
 # BBS
 
-Bar bending schedule generator for Indian site engineers.
+Bar bending schedule generator for Indian site engineers. Two ways in: type the
+structural grid, or drop the plan PDF.
 
 ```
-src/bbs.js       the engine — pure, no DOM, no dependencies
+src/bbs.js       the detailing engine — pure, no DOM, no dependencies
+src/plan.js      the plan reader — PDF in, reviewable parameters out
 test/            node --test
-bbs.html         the viewer — one file, opens from the filesystem
-tools/inline.js  copies src/bbs.js into bbs.html's <script id="engine">
+test/fixtures/   PDFs built by test/make-fixtures.py, expected values known
+bbs.html         the viewer, both pages — one file, opens from the filesystem
+tools/inline.js  copies both modules into their marked blocks in bbs.html
 reference/       the prototype and brief this was built from
 ```
 
@@ -14,6 +17,12 @@ reference/       the prototype and brief this was built from
 
 ```bash
 node --test
+```
+
+Regenerate the PDF fixtures if you change them:
+
+```bash
+py -3.13 test/make-fixtures.py
 ```
 
 Open `bbs.html` by double-clicking it. No server, no network, no build.
@@ -45,6 +54,45 @@ guessed. They are recorded here because they change the steel quantity:
 
 The bend set for every shape lives in `CODE.shapes`, so a stirrup's
 `3 × 2d + 2 × 3d` deduction is never written at a call site.
+
+## Page 2 — reading a plan PDF
+
+`src/plan.js` parses a PDF with no library and no network: objects (including
+PDF 1.5 object streams), the filter chain (`FlateDecode` via the platform's
+`DecompressionStream`, `ASCII85Decode`, `ASCIIHexDecode`), content-stream text
+with positions and its line geometry, and `ToUnicode` CMaps so subset fonts
+decode to real characters instead of control codes.
+
+It then reads the sheet **the way a person does — off the numbers lettered on
+it**, not by measuring pixels. The longest run of believable span numbers
+sharing a row is the X bay chain; sharing a column, the Y chain. Sections come
+from a `300 x 450` on a line that also names the member, steel from
+`8 DIA @ 150 C/C` on or just under a schedule header.
+
+Every value comes back with the text it was read from, the page it was on, and
+`verified: false`. The Extracted parameters table shows all of it and lets you
+override any row before anything is calculated. Confirmed values then go through
+`frame()` and `generate()` — the **same** engine page 1 uses, so there is one
+set of detailing rules, not two.
+
+### What it will not do
+
+- **Scanned drawings.** A page with an image and no text carries no numbers.
+  That is detected and reported; nothing is guessed. OCR needs a model that
+  cannot ship in a single file with no network.
+- **Filters it cannot decode** (`LZWDecode`, `DCTDecode`, …) are named in the
+  status line rather than silently yielding an empty sheet.
+- **It does not understand a drawing.** It finds candidates. The table exists
+  because a human has to confirm them before steel is ordered.
+
+The design review is **code-based checks, not a model**: span/depth against
+IS 456 cl 23.2.1, column slenderness against cl 25.1.2, column steel percentage
+against cl 26.5.3.1, slab depth against span/32, plus whatever the schedule's
+own checks flagged. Every limit is cited and lives in the `REVIEW` object. The
+cost figures use placeholder rates in `REVIEW.rates` — they are assumptions, not
+quotations.
+
+State for the two pages is kept apart, so switching between them preserves both.
 
 ## The structural grid
 

@@ -12,40 +12,59 @@ const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
-const BEGIN = '/* ENGINE:BEGIN — generated from src/bbs.js by tools/inline.js. Do not edit here. */';
-const END = '/* ENGINE:END */';
 
-function extract(html) {
-  const a = html.indexOf(BEGIN);
-  const b = html.indexOf(END);
+/* each source module gets its own marked block in bbs.html */
+const MODULES = [
+  { src: 'src/bbs.js',
+    begin: '/* ENGINE:BEGIN — generated from src/bbs.js by tools/inline.js. Do not edit here. */',
+    end: '/* ENGINE:END */' },
+  { src: 'src/plan.js',
+    begin: '/* PLAN:BEGIN — generated from src/plan.js by tools/inline.js. Do not edit here. */',
+    end: '/* PLAN:END */' }
+];
+
+const BEGIN = MODULES[0].begin;
+const END = MODULES[0].end;
+
+function between(html, begin, end) {
+  const a = html.indexOf(begin);
+  const b = html.indexOf(end);
   if (a < 0 || b < 0 || b < a) return null;
-  return html.slice(a + BEGIN.length, b).replace(/^\n/, '').replace(/\n$/, '');
+  return html.slice(a + begin.length, b).replace(/^\n/, '').replace(/\n$/, '');
 }
+
+/* the engine block, kept for callers that only care about src/bbs.js */
+function extract(html) { return between(html, BEGIN, END); }
 
 function main() {
-  const engine = fs.readFileSync(path.join(ROOT, 'src', 'bbs.js'), 'utf8').replace(/\n$/, '');
   const htmlPath = path.join(ROOT, 'bbs.html');
-  const html = fs.readFileSync(htmlPath, 'utf8');
+  let html = fs.readFileSync(htmlPath, 'utf8');
+  const changed = [];
 
-  const a = html.indexOf(BEGIN);
-  const b = html.indexOf(END);
-  if (a < 0 || b < 0) {
-    console.error('bbs.html is missing the ENGINE:BEGIN / ENGINE:END markers.');
-    process.exit(1);
-  }
-  if (engine.indexOf('</script') >= 0) {
-    console.error('src/bbs.js contains a </script sequence and cannot be inlined.');
-    process.exit(1);
+  for (const mod of MODULES) {
+    const source = fs.readFileSync(path.join(ROOT, mod.src), 'utf8').replace(/\n$/, '');
+    const a = html.indexOf(mod.begin);
+    const b = html.indexOf(mod.end);
+    if (a < 0 || b < 0) {
+      console.error('bbs.html is missing the markers for ' + mod.src + '.');
+      process.exit(1);
+    }
+    if (source.indexOf('</script') >= 0) {
+      console.error(mod.src + ' contains a </script sequence and cannot be inlined.');
+      process.exit(1);
+    }
+    const next = html.slice(0, a + mod.begin.length) + '\n' + source + '\n' + html.slice(b);
+    if (next !== html) changed.push(mod.src + ' (' + source.length + ' chars)');
+    html = next;
   }
 
-  const out = html.slice(0, a + BEGIN.length) + '\n' + engine + '\n' + html.slice(b);
-  if (out === html) {
-    console.log('bbs.html already in sync with src/bbs.js');
+  if (!changed.length) {
+    console.log('bbs.html already in sync with ' + MODULES.map(function (m) { return m.src; }).join(' + '));
     return;
   }
-  fs.writeFileSync(htmlPath, out);
-  console.log('bbs.html engine block updated from src/bbs.js (' + engine.length + ' chars)');
+  fs.writeFileSync(htmlPath, html);
+  console.log('bbs.html updated from ' + changed.join(', '));
 }
 
-module.exports = { BEGIN, END, extract };
+module.exports = { BEGIN, END, MODULES, extract, between };
 if (require.main === module) main();

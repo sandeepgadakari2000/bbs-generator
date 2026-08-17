@@ -1,2 +1,7 @@
 node_modules/
 .DS_Store
+
+# host scaffolding, if anyone ever runs a deploy CLI in here. The repo is
+# static files only; project ids and local build caches are not part of it.
+.vercel
+.wrangler/

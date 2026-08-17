@@ -21,10 +21,14 @@ const viewerOnly = MODULES.reduce(function (acc, mod) {
 
 MODULES.forEach(function (mod) {
   test('the inlined copy of ' + mod.src + ' is byte-identical to the source', function () {
-    const src = fs.readFileSync(path.join(ROOT, mod.src), 'utf8').replace(/\n$/, '');
+    // git may hand either side CRLF on checkout, so compare the content
+    // rather than the platform's choice of line ending
+    const eol = function (t) { return t.replace(/\r\n/g, '\n').replace(/\s+$/, ''); };
+    const src = fs.readFileSync(path.join(ROOT, mod.src), 'utf8');
     const inlined = between(html, mod.begin, mod.end);
     assert.ok(inlined !== null, 'bbs.html has no marked block for ' + mod.src);
-    assert.equal(inlined, src, 'bbs.html block for ' + mod.src + ' is stale — run: node tools/inline.js');
+    assert.equal(eol(inlined), eol(src),
+      'bbs.html block for ' + mod.src + ' is stale — run: node tools/inline.js');
   });
 });
 

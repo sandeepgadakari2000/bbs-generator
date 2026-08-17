@@ -1,2 +1,6 @@
-# PDFs are binary — never let the CRLF filter touch them
+# These files were authored with LF and the inliner compares them byte for
+# byte, so keep the working tree LF on every platform.
+* text=auto eol=lf
+
+# PDFs are binary — the EOL filter would corrupt the test fixtures.
 *.pdf binary

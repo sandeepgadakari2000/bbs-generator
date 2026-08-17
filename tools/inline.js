@@ -30,7 +30,8 @@ function between(html, begin, end) {
   const a = html.indexOf(begin);
   const b = html.indexOf(end);
   if (a < 0 || b < 0 || b < a) return null;
-  return html.slice(a + begin.length, b).replace(/^\n/, '').replace(/\n$/, '');
+  /* tolerate CRLF: git may have rewritten the line endings on checkout */
+  return html.slice(a + begin.length, b).replace(/^\r?\n/, '').replace(/\r?\n$/, '');
 }
 
 /* the engine block, kept for callers that only care about src/bbs.js */

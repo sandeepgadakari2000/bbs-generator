@@ -1,0 +1,1938 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>BBS — members in, cut lengths out</title>
+<style>
+  :root{
+    --ink:#14171a; --sheet:#f6f7f6; --rule:#b6bcb9; --accent:#e07b1e; --paper:#fff;
+    --steel:rgba(20,23,26,.56);
+    --ghost:rgba(20,23,26,.06);
+    --hair:rgba(182,188,185,.45);
+    --tint:rgba(224,123,30,.08);
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;background:var(--sheet);color:var(--ink);
+    font-family:"Helvetica Neue",Helvetica,Arial,sans-serif}
+  body{padding-bottom:64px}
+
+  header{padding:18px 16px 12px;border-bottom:1px solid var(--rule)}
+  .eyebrow{font:500 10px/1 var(--mono);letter-spacing:.22em;text-transform:uppercase;color:var(--steel)}
+  h1{margin:8px 0 0;font-size:clamp(21px,6vw,32px);letter-spacing:-.02em}
+  h1 em{font-style:normal;color:var(--accent)}
+  header p{margin:6px 0 0;font:400 11.5px/1.5 var(--mono);color:var(--steel);max-width:66ch}
+
+  /* ---------- field strips ---------- */
+  /* separators are borders on the cells, not gap bleed — a half-filled
+     last row would otherwise render as solid grey blocks */
+  .strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));
+    background:var(--paper);border-bottom:1px solid var(--rule)}
+  .field{background:var(--paper);padding:8px 11px 7px;min-width:0;
+    border-right:1px solid var(--rule);border-top:1px solid var(--hair)}
+  .field label{display:block;font:500 8.5px/1 var(--mono);letter-spacing:.16em;
+    text-transform:uppercase;color:var(--steel);margin-bottom:5px}
+  .field input,.field select{width:100%;border:0;background:transparent;color:var(--ink);
+    font:600 15px/1.35 var(--mono);padding:0;outline:none;appearance:none;min-height:22px}
+  .field input:focus,.field select:focus{color:var(--accent)}
+  .field select{cursor:pointer}
+
+  /* ---------- readout ---------- */
+  #readout{display:flex;overflow-x:auto;border-bottom:1px solid var(--rule);background:var(--paper)}
+  #readout .cell{padding:9px 13px;border-left:1px solid var(--rule);white-space:nowrap}
+  #readout .cell:first-child{border-left:0}
+  #readout b{display:block;font:600 13px/1.2 var(--mono)}
+  #readout span{display:block;font:500 8.5px/1 var(--mono);letter-spacing:.14em;
+    text-transform:uppercase;color:var(--steel);margin-top:4px}
+  #readout b.flag{color:var(--accent)}
+
+  /* ---------- sections ---------- */
+  .sec{padding:16px 16px 0}
+  .sechead{display:flex;align-items:baseline;gap:10px;margin-bottom:10px}
+  .sechead h2{margin:0;font:600 11px/1 var(--mono);letter-spacing:.2em;text-transform:uppercase}
+  .sechead i{flex:1;height:1px;background:var(--rule)}
+  .sechead u{text-decoration:none;font:500 10px/1 var(--mono);color:var(--steel);white-space:nowrap}
+
+  /* ---------- members ---------- */
+  .mcard{background:var(--paper);border:1px solid var(--rule);margin-bottom:8px}
+  .mhead{display:flex;align-items:center;gap:10px;padding:11px 12px;cursor:pointer;min-height:52px}
+  .mhead .mid{font:700 12px/1.2 var(--mono);letter-spacing:.06em}
+  .mhead .mdesc{flex:1;min-width:0;font:500 10px/1.45 var(--mono);color:var(--steel);
+    overflow:hidden;text-overflow:ellipsis}
+  .mhead .mkg{font:600 11px/1 var(--mono);white-space:nowrap}
+  .mhead .chev{font:600 11px/1 var(--mono);color:var(--steel);width:14px;text-align:right}
+  .mcard.open .chev{color:var(--accent)}
+  .mbody{display:none;border-top:1px solid var(--rule)}
+  .mcard.open .mbody{display:block}
+  .subbar{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--ghost);
+    border-bottom:1px solid var(--hair);flex-wrap:wrap}
+  .subbar span{font:500 8.5px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--steel);flex:1}
+  .chips{display:flex;flex-wrap:wrap;gap:1px;background:var(--rule);border-bottom:1px solid var(--rule)}
+  .chips button{flex:1 1 auto;border:0;background:var(--paper);color:var(--ink);cursor:pointer;
+    font:600 9.5px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;padding:11px 8px;min-height:40px}
+  .chips button.on{background:var(--ink);color:var(--paper)}
+
+  button.mini{font:600 9px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;
+    padding:9px 10px;min-height:34px;border:1px solid var(--rule);background:var(--paper);
+    color:var(--ink);cursor:pointer}
+  button.mini:hover{border-color:var(--ink)}
+  button.mini.k{background:var(--ink);border-color:var(--ink);color:var(--paper)}
+  button.mini.a{border-color:var(--accent);color:var(--accent)}
+
+  .addm{width:100%;border:1px dashed var(--rule);background:transparent;color:var(--steel);
+    font:600 10px/1 var(--mono);letter-spacing:.18em;text-transform:uppercase;
+    padding:15px;cursor:pointer;min-height:48px}
+  .addm:hover{border-color:var(--accent);color:var(--accent)}
+
+  /* ---------- warnings ---------- */
+  #warnbox{border:1px solid var(--accent);background:var(--tint)}
+  #warnbox .wgrp{border-top:1px solid var(--hair);padding:9px 12px}
+  #warnbox .wgrp:first-child{border-top:0}
+  #warnbox .wid{font:700 9px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;
+    color:var(--accent);margin-bottom:6px}
+  #warnbox .w{display:flex;gap:8px;font:500 10.5px/1.5 var(--mono);margin-top:5px}
+  #warnbox .w code{font:700 9px/1.5 var(--mono);letter-spacing:.06em;color:var(--accent);
+    white-space:nowrap;flex:0 0 auto}
+  #warnbox .none{padding:11px 12px;font:500 10.5px/1.5 var(--mono);color:var(--steel)}
+
+  /* ---------- tables ---------- */
+  .tabs{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
+  .tabs button{font:600 10px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;
+    padding:11px 12px;min-height:40px;border:1px solid var(--rule);background:transparent;
+    color:var(--ink);cursor:pointer}
+  .tabs button.on{background:var(--ink);border-color:var(--ink);color:var(--paper)}
+
+  .tablewrap{overflow-x:auto;background:var(--paper);border:1px solid var(--rule)}
+  table{width:100%;border-collapse:collapse;font:500 11px/1.35 var(--mono)}
+  th{text-align:left;font:500 8.5px/1.25 var(--mono);letter-spacing:.12em;text-transform:uppercase;
+    color:var(--steel);padding:9px;border-bottom:1px solid var(--rule);white-space:nowrap;vertical-align:bottom}
+  td{padding:8px 9px;border-bottom:1px solid var(--hair);white-space:nowrap}
+  td.num,th.num{text-align:right}
+  tr.sub td{background:var(--ghost);font:600 8.5px/1.4 var(--mono);letter-spacing:.14em;
+    text-transform:uppercase;color:var(--steel)}
+  tr.tot td{font-weight:700;border-bottom:1px solid var(--rule)}
+  tr.row{cursor:pointer;-webkit-user-select:none;user-select:none}
+  tr.row:hover td{background:var(--ghost)}
+  tr.row.on td{background:var(--tint)}
+  td .cut{border-bottom:1px dotted var(--accent);padding-bottom:1px}
+  td.mk{font-weight:700}
+  .warnmark{color:var(--accent);font-weight:700}
+
+  tr.detail td{background:var(--paper);border-bottom:1px solid var(--rule);white-space:normal;padding:0}
+  /* the schedule scrolls sideways on a phone; pin the derivation to the
+     visible edge so the arithmetic never runs off the right of the screen */
+  .dgrid{position:sticky;left:0;box-sizing:border-box;width:calc(100vw - 34px);
+    display:grid;grid-template-columns:minmax(190px,250px) 1fr;gap:14px;padding:13px}
+  @media (max-width:640px){ .dgrid{grid-template-columns:1fr} }
+  @media (max-width:420px){ .dgrid{width:calc(100vw - 22px)} }
+  .dshape{border:1px solid var(--hair);background:var(--paper)}
+  .dshape svg{display:block;width:100%;height:auto}
+  .dlab{font:500 8.5px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;
+    color:var(--steel);margin:0 0 4px}
+  .dder{font:500 11px/1.6 var(--mono);margin:0 0 11px;word-break:break-word}
+  .dder:last-child{margin-bottom:0}
+
+  .shapecell{display:flex;align-items:center;gap:8px}
+  .shapecell svg{display:block;height:30px;width:auto;flex:0 0 auto}
+  .shapecell b{font:600 9px/1.2 var(--mono);letter-spacing:.04em}
+
+  /* ---------- title block ---------- */
+  #titleblock{display:grid;grid-template-columns:1fr 148px;border:1px solid var(--ink);
+    background:var(--paper);margin-bottom:10px}
+  #titleblock .tbmain{padding:10px 12px}
+  #titleblock .tbside{border-left:1px solid var(--ink);display:grid;grid-template-rows:1fr 1fr 1fr}
+  #titleblock .tbcell{padding:6px 10px;border-top:1px solid var(--hair)}
+  #titleblock .tbcell:first-child{border-top:0}
+  #titleblock .k{font:500 8px/1 var(--mono);letter-spacing:.18em;text-transform:uppercase;color:var(--steel)}
+  #titleblock .v{font:600 12px/1.3 var(--mono);margin-top:4px;word-break:break-word}
+  #titleblock .tbmain .v{font-size:15px}
+  #titleblock .tbt{font:700 10px/1 var(--mono);letter-spacing:.2em;text-transform:uppercase;
+    color:var(--accent);margin-top:9px}
+
+  /* ---------- footers ---------- */
+  footer.note{margin:22px 0 0;padding:14px 16px;border-top:1px solid var(--rule);
+    font:500 10px/1.6 var(--mono);color:var(--steel)}
+  footer.note b{display:block;font:500 8.5px/1 var(--mono);letter-spacing:.18em;
+    text-transform:uppercase;color:var(--accent);margin-bottom:6px}
+  #bar{position:fixed;left:0;right:0;bottom:0;background:rgba(255,255,255,.95);
+    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-top:1px solid var(--rule);
+    padding:8px 12px calc(8px + env(safe-area-inset-bottom));display:flex;gap:8px;align-items:center}
+  #bar .grow{flex:1;min-width:0;font:500 9px/1.35 var(--mono);color:var(--steel);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #bar button{font:600 10px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;
+    padding:12px 13px;min-height:44px;border:1px solid var(--rule);background:transparent;cursor:pointer}
+  #bar button.k{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+
+  #tsvwrap{display:none;padding:0 16px}
+  #tsvwrap.on{display:block}
+  #tsv{width:100%;height:150px;border:1px solid var(--rule);background:var(--paper);color:var(--ink);
+    font:500 10px/1.5 var(--mono);padding:9px;resize:vertical}
+
+  @media (max-width:420px){
+    .strip{grid-template-columns:repeat(auto-fit,minmax(104px,1fr))}
+    .sec{padding:14px 10px 0}
+    header{padding:15px 12px 11px}
+  }
+
+  @media print{
+    @page{ size:A4; margin:11mm; }
+    body{background:#fff;padding:0;font-size:9pt}
+    header,.strip,#bar,.tabs,.mcard,.addm,#tsvwrap,#memhead,#readout,
+    .noprint,tr.detail{display:none!important}
+    .sechead u{display:none}
+    /* 11 columns have to fit 188 mm of A4 */
+    .shapecell svg{height:14px}
+    .shapecell b{font-size:6pt}
+    td .cut{border-bottom:0}
+    .sec{padding:0 0 10px;break-inside:auto}
+    #titleblock{margin-bottom:8px;break-inside:avoid}
+    .tablewrap{border:1px solid var(--ink);overflow:visible}
+    table{font-size:7.6pt}
+    th{padding:5px 6px}
+    td{padding:4px 6px}
+    thead{display:table-header-group}
+    tr{break-inside:avoid}
+    #warnbox{break-inside:avoid}
+    .sechead h2{font-size:8pt}
+    footer.note{margin-top:8px;padding:8px 0 0;font-size:7pt}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="eyebrow">Bar bending schedule / v1.0</div>
+  <h1>Members in. <em>Cut lengths out.</em></h1>
+  <p>Enter the member. The engine applies hooks, bends, cranks and laps, then returns every
+     cutting length with the arithmetic that produced it — and flags what it would not sign off on.</p>
+</header>
+
+<div class="strip" id="project">
+  <div class="field"><label>Project</label><input id="pName" type="text" placeholder="Project name"></div>
+  <div class="field"><label>Member set</label><input id="pSet" type="text" placeholder="Block / level"></div>
+  <div class="field"><label>Date</label><input id="pDate" type="date"></div>
+  <div class="field"><label>Revision</label><input id="pRev" type="text" value="R0"></div>
+</div>
+
+<div id="readout"></div>
+
+<div class="sec" id="memhead">
+  <div class="sechead"><h2>Members</h2><i></i><u id="memcount"></u></div>
+  <div id="members"></div>
+</div>
+
+<div class="sec" id="warnsec">
+  <div class="sechead" id="warnhead"><h2>Checks</h2><i></i><u id="warncount"></u></div>
+  <div id="warnbox"></div>
+</div>
+
+<div class="sec">
+  <div class="sechead"><h2>Schedule</h2><i></i><u id="schedhint">tap a row for its derivation</u></div>
+  <div id="titleblock"></div>
+  <div class="tabs noprint" id="grouptabs">
+    <button data-g="member" class="on">By member</button>
+    <button data-g="dia">By diameter</button>
+  </div>
+  <div class="tablewrap"><table id="sched"></table></div>
+</div>
+
+<div class="sec">
+  <div class="sechead"><h2>Summary</h2><i></i><u id="sumhint"></u></div>
+  <div class="tablewrap"><table id="summary"></table></div>
+</div>
+
+<div id="tsvwrap">
+  <div class="sechead"><h2>TSV</h2><i></i><u>select all and copy if the button was blocked</u></div>
+  <textarea id="tsv" readonly spellcheck="false"></textarea>
+</div>
+
+<footer class="note">
+  <b>Before site use</b>
+  Detailing constants follow common Indian practice. Verify against IS 2502, IS 456 and the
+  project consultant's detailing note before site use.
+</footer>
+
+<div id="bar">
+  <div class="grow" id="barnote"></div>
+  <button id="btnTsv">Copy TSV</button>
+  <button id="btnPrint" class="k">Print</button>
+</div>
+
+<script id="engine">
+/* ENGINE:BEGIN — generated from src/bbs.js by tools/inline.js. Do not edit here. */
+'use strict';
+
+/* =====================================================================
+   BBS ENGINE — bar bending schedule for Indian site practice.
+
+   Pure logic. No DOM, no window, no third-party code, requireable in
+   Node. The viewer (bbs.html) is built around this and never duplicates
+   a calculation.
+
+   Units: mm for detailing, m for schedule lengths, kg for weights.
+
+   On numeric literals: every DETAILING value lives in CODE and is read
+   from CODE at call time. Literals that survive in the calculation path
+   are pure geometry with no detailing content — a rectangle has two
+   pairs of sides, a diamond has four, a step is half of riser × tread,
+   n bars leave n−1 gaps, π is π. Those are not constants anyone would
+   want to tune, and hiding them in a config object would make the
+   formulas unreadable.
+   ===================================================================== */
+
+/* ---------------------------------------------------------------------
+   CODE — the single home for every detailing constant.
+   ------------------------------------------------------------------- */
+const CODE = {
+  bendDeduction: { 45: 1, 90: 2, 135: 3 },              // × d, per bend
+  hook:  { u180: 9, stirrup135: 10, minMm: 75 },        // × d, subject to minMm
+  crank: { deg45: 0.42, deg30: 0.27 },                  // × D (clear distance between top and bottom bar centres)
+  lap:   { tension: 50, compression: 40 },              // × d
+  cover: { footing: 50, column: 40, beam: 25, slab: 20, lintel: 25, staircase: 20 },  // mm, nominal
+  stockLengthMm: 12000,
+  wastagePct: 3,
+  barSizes: [6, 8, 10, 12, 16, 20, 25, 32],
+  unitWeight: (d) => (d * d) / 162,                     // kg/m
+  limits: {
+    stirrupSpacingMaxMm: 300,
+    stirrupSpacingDepthFactor: 0.75,                    // ≤ 0.75d for beams
+    minBarClearMm: 25,
+    steelRatioMin: 80,                                  // kg per m³ of concrete
+    steelRatioMax: 200
+  },
+
+  /* ---- shape catalogue -------------------------------------------
+     Bend sets per shape, so "3 × 2d + 2 × 3d" is never written at a
+     call site. Angles index CODE.bendDeduction.
+     Stirrup geometry follows the centre-line convention: the circular
+     ring is measured on the bar centre-line, and the triangular apex
+     is deducted as a 90° bend.
+     Shape ids are internal. No BS 8666 conformance is claimed.
+     ---------------------------------------------------------------- */
+  shapes: {
+    STRAIGHT:     { label: 'Straight',             bends: [] },
+    L_BEND:       { label: 'L-bend',               bends: [] },
+    CRANK:        { label: 'Cranked',              bends: [] },
+    U_HOOK:       { label: 'U-hook',               bends: [] },
+    STIRRUP_RECT: { label: 'Rectangular stirrup',  bends: [90, 90, 90, 135, 135], hooks: 2, hookKind: 'stirrup135' },
+    STIRRUP_TRI:  { label: 'Triangular stirrup',   bends: [90, 90, 135, 135],     hooks: 2, hookKind: 'stirrup135' },
+    STIRRUP_DIA:  { label: 'Diamond stirrup',      bends: [90, 90, 90, 135, 135], hooks: 2, hookKind: 'stirrup135' },
+    STIRRUP_CIRC: { label: 'Circular ring',        bends: [135, 135],             hooks: 2, hookKind: 'stirrup135' }
+  },
+
+  /* ---- what each end condition contributes, per end ---------------- */
+  ends: {
+    continuous: { label: 'Continuous', hooks: 0, bends: [] },
+    hook:       { label: 'U-hook',     hooks: 1, hookKind: 'u180', bends: [] },   // 9d is the net allowance
+    bend:       { label: 'L-bend',     hooks: 0, bends: [90], leg: true },
+    crank:      { label: 'Cranked',    hooks: 0, bends: [] }
+  },
+
+  /* ---- cranked bars ------------------------------------------------ */
+  crankGeometry: {
+    defaultCount: 2,
+    angleKey: 'deg45',            // indexes CODE.crank
+    bendsPerCrank: [45, 45]       // indexes CODE.bendDeduction
+  },
+
+  /* ---- structural bookkeeping -------------------------------------- */
+  geometry: {
+    coverFaces: 2,                // cover is deducted at both ends of a run
+    barEnds: 2,
+    endBarAllowance: 1            // the "+ 1" in count = ceil(run / spacing) + 1
+  },
+
+  /* ---- which members each check applies to ------------------------- */
+  checks: {
+    stirrupSpacingAppliesTo: ['beam', 'lintel'],
+    congestionAppliesTo: ['beam', 'lintel', 'column'],
+    lapZoneAppliesTo: ['beam', 'lintel', 'slabOneWay', 'slabTwoWay', 'staircase'],
+    lapAvoidZone: { bottom: 'midSpan', top: 'support' }
+  },
+
+  units: { mmPerM: 1000, mm3PerM3: 1e9, kgPerTonne: 1000, percent: 100 }
+};
+
+/* ---------------------------------------------------------------------
+   Small helpers
+   ------------------------------------------------------------------- */
+const MINUS = '−';   // − true minus, to match the drawing convention
+const TIMES = '×';   // ×
+
+function round(v, n) { const p = Math.pow(10, n); return Math.round(v * p) / p; }
+function fmt(v) {
+  const x = round(v, 1);
+  return Number.isInteger(x) ? String(x) : x.toFixed(1);
+}
+function clone(v) {
+  if (Array.isArray(v)) return v.map(clone);
+  if (v && typeof v === 'object') {
+    const o = {};
+    Object.keys(v).forEach(function (k) { o[k] = clone(v[k]); });
+    return o;
+  }
+  return v;
+}
+
+/* ---------------------------------------------------------------------
+   ALLOWANCES — each returns a { mm, note } term
+   ------------------------------------------------------------------- */
+function hookTerm(kind, count, d) {
+  const factor = CODE.hook[kind];
+  const raw = factor * d;
+  const each = Math.max(raw, CODE.hook.minMm);
+  const governed = each > raw;
+  return {
+    mm: count * each,
+    note: count + ' ' + TIMES + ' ' + factor + 'd hook @ ' + d +
+          (governed ? ', min ' + CODE.hook.minMm : '')
+  };
+}
+
+function bendTerm(bends, d) {
+  if (!bends || !bends.length) return null;
+  const byAngle = {};
+  bends.forEach(function (a) { byAngle[a] = (byAngle[a] || 0) + 1; });
+  const angles = Object.keys(byAngle).map(Number).sort(function (a, b) { return a - b; });
+  let mm = 0;
+  const parts = angles.map(function (a) {
+    const ded = CODE.bendDeduction[a];
+    if (ded === undefined) return null;             // unknown angle: never guessed
+    mm += byAngle[a] * ded * d;
+    return byAngle[a] + ' ' + TIMES + ' ' + ded + 'd';
+  }).filter(Boolean);
+  if (!parts.length) return null;
+  return { mm: -mm, note: parts.join(' + ') + ' bends @ ' + d };
+}
+
+function crankTerm(count, DMm) {
+  const factor = CODE.crank[CODE.crankGeometry.angleKey];
+  return {
+    mm: count * factor * DMm,
+    note: count + ' ' + TIMES + ' ' + factor + 'D crank @ D=' + fmt(DMm)
+  };
+}
+
+function lapTerm(count, type, d) {
+  const factor = CODE.lap[type];
+  return {
+    mm: count * factor * d,
+    note: count + ' ' + TIMES + ' ' + factor + 'd ' + type + ' lap @ ' + d
+  };
+}
+
+/* ---------------------------------------------------------------------
+   ASSEMBLE — one cutting length, with its derivation.
+
+   Cutting length = run − cover + hooks + cranks + laps − bend deductions
+   ------------------------------------------------------------------- */
+function assemble(spec) {
+  const d = spec.dia;
+  const terms = [spec.base];
+  let bends = (spec.bends || []).slice();
+
+  // additions that belong with the run itself, e.g. the legs of an L-bend
+  (spec.extra || []).forEach(function (t) { terms.push(t); });
+
+  if (spec.hooks && spec.hooks.count > 0) {
+    terms.push(hookTerm(spec.hooks.kind, spec.hooks.count, d));
+  }
+  if (spec.cranks && spec.cranks.count > 0) {
+    terms.push(crankTerm(spec.cranks.count, spec.cranks.DMm));
+    for (let i = 0; i < spec.cranks.count; i++) {
+      bends = bends.concat(CODE.crankGeometry.bendsPerCrank);
+    }
+  }
+  if (spec.laps && spec.laps.count > 0) {
+    terms.push(lapTerm(spec.laps.count, spec.laps.type, d));
+  }
+  const bd = bendTerm(bends, d);
+  if (bd) terms.push(bd);
+
+  const raw = terms.reduce(function (s, t) { return s + t.mm; }, 0);
+  const mm = Math.round(raw);
+
+  let s = '';
+  terms.forEach(function (t, i) {
+    if (i === 0) s += fmt(t.mm) + ' (' + t.note + ')';
+    else s += ' ' + (t.mm < 0 ? MINUS : '+') + ' ' + fmt(Math.abs(t.mm)) + ' (' + t.note + ')';
+  });
+
+  return { mm: mm, rawMm: raw, terms: terms, derivation: s + ' = ' + mm + ' mm' };
+}
+
+/* ---------------------------------------------------------------------
+   MEMBER GEOMETRY
+
+   Each type declares the concrete dimensions it needs, how a bar's run
+   is measured, what a stirrup wraps, and how much concrete there is.
+   ------------------------------------------------------------------- */
+const F = function () { return CODE.geometry.coverFaces; };
+
+function coverNote(cover) { return F() + TIMES + cover + ' cover'; }
+function runLess(lengthMm, label, cover) {
+  return {
+    mm: lengthMm - F() * cover,
+    note: fmt(lengthMm) + ' ' + label + ' ' + MINUS + ' ' + coverNote(cover)
+  };
+}
+function sectionLessCover(member, wKey, dKey) {
+  const c = member.coverMm, cc = member.concrete;
+  return {
+    aMm: cc[wKey] - F() * c,
+    bMm: cc[dKey] - F() * c,
+    note: fmt(cc[wKey]) + TIMES + fmt(cc[dKey]) + ' less ' + coverNote(c)
+  };
+}
+
+const MEMBERS = {
+  footing: {
+    label: 'Isolated footing',
+    coverKey: 'footing',
+    dims: ['lengthMm', 'widthMm', 'depthMm'],
+    bendLegFrom: 'depthMm',
+    defaultAlong: 'length',
+    run: function (m, bar) {
+      const k = bar.along === 'width' ? 'widthMm' : 'lengthMm';
+      return runLess(m.concrete[k], bar.along === 'width' ? 'width' : 'length', m.coverMm);
+    },
+    across: function (m, bar) {
+      const k = bar.along === 'width' ? 'lengthMm' : 'widthMm';
+      return runLess(m.concrete[k], bar.along === 'width' ? 'length' : 'width', m.coverMm);
+    },
+    stirrupRun: function (m) { return { mm: m.concrete.lengthMm, note: 'length' }; },
+    section: function (m) { return sectionLessCover(m, 'widthMm', 'depthMm'); },
+    volumeMm3: function (m) { return m.concrete.lengthMm * m.concrete.widthMm * m.concrete.depthMm; },
+    depthMm: function (m) { return m.concrete.depthMm; }
+  },
+
+  column: {
+    label: 'Column',
+    coverKey: 'column',
+    dims: ['widthMm', 'depthMm', 'heightMm'],
+    bendLegFrom: 'depthMm',
+    defaultAlong: 'height',
+    run: function (m) { return runLess(m.concrete.heightMm, 'height', m.coverMm); },
+    across: function (m) { return runLess(m.concrete.heightMm, 'height', m.coverMm); },
+    stirrupRun: function (m) { return { mm: m.concrete.heightMm, note: 'height' }; },
+    section: function (m) { return sectionLessCover(m, 'widthMm', 'depthMm'); },
+    volumeMm3: function (m) { return m.concrete.widthMm * m.concrete.depthMm * m.concrete.heightMm; },
+    depthMm: function (m) { return m.concrete.depthMm; }
+  },
+
+  beam: {
+    label: 'Beam',
+    coverKey: 'beam',
+    dims: ['widthMm', 'depthMm', 'spanMm'],
+    bendLegFrom: 'depthMm',
+    defaultAlong: 'span',
+    run: function (m) { return runLess(m.concrete.spanMm, 'clear', m.coverMm); },
+    across: function (m) { return runLess(m.concrete.spanMm, 'clear', m.coverMm); },
+    stirrupRun: function (m) { return { mm: m.concrete.spanMm, note: 'clear' }; },
+    section: function (m) { return sectionLessCover(m, 'widthMm', 'depthMm'); },
+    volumeMm3: function (m) { return m.concrete.widthMm * m.concrete.depthMm * m.concrete.spanMm; },
+    depthMm: function (m) { return m.concrete.depthMm; }
+  },
+
+  lintel: {
+    label: 'Lintel',
+    coverKey: 'lintel',
+    dims: ['widthMm', 'depthMm', 'spanMm', 'bearingMm'],
+    bendLegFrom: 'depthMm',
+    defaultAlong: 'span',
+    overall: function (m) { return m.concrete.spanMm + F() * (m.concrete.bearingMm || 0); },
+    run: function (m) {
+      const cc = m.concrete, br = cc.bearingMm || 0, c = m.coverMm;
+      return {
+        mm: cc.spanMm + F() * br - F() * c,
+        note: fmt(cc.spanMm) + ' clear + ' + F() + TIMES + fmt(br) + ' bearing ' + MINUS + ' ' + coverNote(c)
+      };
+    },
+    across: function (m) { return runLess(MEMBERS.lintel.overall(m), 'overall', m.coverMm); },
+    stirrupRun: function (m) { return { mm: MEMBERS.lintel.overall(m), note: 'overall' }; },
+    section: function (m) { return sectionLessCover(m, 'widthMm', 'depthMm'); },
+    volumeMm3: function (m) { return m.concrete.widthMm * m.concrete.depthMm * MEMBERS.lintel.overall(m); },
+    depthMm: function (m) { return m.concrete.depthMm; }
+  },
+
+  slabOneWay: {
+    label: 'One-way slab',
+    coverKey: 'slab',
+    dims: ['lengthMm', 'widthMm', 'thicknessMm'],
+    bendLegFrom: 'thicknessMm',
+    defaultAlong: 'length',
+    run: function (m, bar) {
+      const k = bar.along === 'width' ? 'widthMm' : 'lengthMm';
+      return runLess(m.concrete[k], bar.along === 'width' ? 'long span' : 'clear', m.coverMm);
+    },
+    across: function (m, bar) {
+      const k = bar.along === 'width' ? 'lengthMm' : 'widthMm';
+      return runLess(m.concrete[k], bar.along === 'width' ? 'clear' : 'long span', m.coverMm);
+    },
+    stirrupRun: function (m) { return { mm: m.concrete.lengthMm, note: 'clear' }; },
+    section: function (m) { return sectionLessCover(m, 'widthMm', 'thicknessMm'); },
+    volumeMm3: function (m) { return m.concrete.lengthMm * m.concrete.widthMm * m.concrete.thicknessMm; },
+    depthMm: function (m) { return m.concrete.thicknessMm; }
+  },
+
+  staircase: {
+    label: 'Staircase flight',
+    coverKey: 'staircase',
+    dims: ['riserMm', 'treadMm', 'treads', 'waistMm', 'widthMm'],
+    bendLegFrom: 'waistMm',
+    defaultAlong: 'flight',
+    slopePerStep: function (m) { return Math.hypot(m.concrete.riserMm, m.concrete.treadMm); },
+    flightMm: function (m) {
+      const cc = m.concrete;
+      return (cc.landingAMm || 0) + cc.treads * MEMBERS.staircase.slopePerStep(m) + (cc.landingBMm || 0);
+    },
+    run: function (m, bar) {
+      const c = m.coverMm, cc = m.concrete;
+      if (bar.along === 'width') return runLess(cc.widthMm, 'width', c);
+      const slope = MEMBERS.staircase.slopePerStep(m);
+      const total = MEMBERS.staircase.flightMm(m);
+      return {
+        mm: total - F() * c,
+        note: fmt(total) + ' on slope (' + cc.treads + ' ' + TIMES + ' ' + fmt(slope) +
+              ' + landings) ' + MINUS + ' ' + coverNote(c)
+      };
+    },
+    across: function (m, bar) {
+      const c = m.coverMm;
+      if (bar.along === 'width') return runLess(MEMBERS.staircase.flightMm(m), 'on slope', c);
+      return runLess(m.concrete.widthMm, 'width', c);
+    },
+    stirrupRun: function (m) { return { mm: MEMBERS.staircase.flightMm(m), note: 'on slope' }; },
+    section: function (m) { return sectionLessCover(m, 'widthMm', 'waistMm'); },
+    volumeMm3: function (m) {
+      const cc = m.concrete;
+      const waist = MEMBERS.staircase.slopePerStep(m) * cc.treads * cc.waistMm * cc.widthMm;
+      const steps = (cc.riserMm * cc.treadMm / 2) * cc.treads * cc.widthMm;
+      const land = ((cc.landingAMm || 0) + (cc.landingBMm || 0)) * cc.widthMm * cc.waistMm;
+      return waist + steps + land;
+    },
+    depthMm: function (m) { return m.concrete.waistMm; }
+  }
+};
+
+// A two-way slab is a one-way slab that is reinforced in both directions.
+MEMBERS.slabTwoWay = Object.assign({}, MEMBERS.slabOneWay, {
+  label: 'Two-way slab', coverKey: 'slab'
+});
+
+/* ---------------------------------------------------------------------
+   BAR ROWS
+   ------------------------------------------------------------------- */
+function endsOf(bar) {
+  if (Array.isArray(bar.ends) && bar.ends.length) return bar.ends;
+  const e = bar.end || 'continuous';
+  const out = [];
+  for (let i = 0; i < CODE.geometry.barEnds; i++) out.push(e);
+  return out;
+}
+
+function shapeOf(bar) {
+  const e = endsOf(bar);
+  if (e.indexOf('crank') >= 0 || bar.cranks > 0) return 'CRANK';
+  if (e.indexOf('hook') >= 0) return 'U_HOOK';
+  if (e.indexOf('bend') >= 0) return 'L_BEND';
+  return 'STRAIGHT';
+}
+
+function countFromSpacing(acrossMm, spacingMm) {
+  return Math.ceil(acrossMm / spacingMm) + CODE.geometry.endBarAllowance;
+}
+
+function barRow(member, bar, geom, seq, warn) {
+  const d = bar.dia;
+  const c = member.coverMm;
+  const run = geom.run(member, bar);
+  const ends = endsOf(bar);
+  const shape = shapeOf(bar);
+
+  /* end conditions -> hooks, extra legs, bends */
+  let hookCount = 0, hookKind = null, bends = [], legCount = 0;
+  let legMm = null;
+  ends.forEach(function (name) {
+    const rule = CODE.ends[name];
+    if (!rule) {
+      warn(member, 'INPUT_UNKNOWN', 'End condition "' + name + '" is not one of ' +
+        Object.keys(CODE.ends).join(' / ') + '. Treated as continuous.');
+      return;
+    }
+    if (rule.hooks) { hookCount += rule.hooks; hookKind = rule.hookKind; }
+    if (rule.leg) {
+      legMm = bar.bendLegMm !== undefined
+        ? bar.bendLegMm
+        : member.concrete[geom.bendLegFrom] - F() * c;
+      legCount++;
+    }
+    bends = bends.concat(rule.bends || []);
+  });
+
+  const extra = [];
+  if (legCount) {
+    extra.push({
+      mm: legCount * legMm,
+      note: legCount + ' ' + TIMES + ' ' + fmt(legMm) + ' bent leg' +
+            (bar.bendLegMm !== undefined ? '' : ' (' + fmt(member.concrete[geom.bendLegFrom]) +
+             ' ' + MINUS + ' ' + coverNote(c) + ')')
+    });
+  }
+
+  /* cranks */
+  let cranks = null;
+  const crankCount = bar.cranks !== undefined
+    ? bar.cranks
+    : (ends.indexOf('crank') >= 0 ? CODE.crankGeometry.defaultCount : 0);
+  if (crankCount > 0) {
+    const DMm = bar.crankDepthMm !== undefined
+      ? bar.crankDepthMm
+      : geom.depthMm(member) - F() * c - d;   // centre to centre of top and bottom bars
+    cranks = { count: crankCount, DMm: DMm };
+  }
+
+  const cut = assemble({
+    dia: d,
+    base: run,
+    extra: extra,
+    hooks: hookCount ? { count: hookCount, kind: hookKind } : null,
+    cranks: cranks,
+    laps: bar.laps > 0 ? { count: bar.laps, type: bar.lapType || 'tension' } : null,
+    bends: bends
+  });
+
+  /* count per member */
+  let count = bar.count, countDerivation = null;
+  if (count === undefined && bar.spacingMm) {
+    const across = geom.across(member, bar);
+    count = countFromSpacing(across.mm, bar.spacingMm);
+    countDerivation = 'ceil(' + fmt(across.mm) + ' ÷ ' + bar.spacingMm + ') + ' +
+      CODE.geometry.endBarAllowance + ' = ' + count + '  [' + across.note + ']';
+  } else if (count === undefined) {
+    warn(member, 'INPUT_INCOMPLETE', 'Bar "' + (bar.label || d + ' mm') +
+      '" has neither a count nor a spacing. Taken as 1.');
+    count = 1;
+  }
+
+  const qty = member.quantity || 1;
+  const uw = CODE.unitWeight(d);
+  const lenM = cut.mm / CODE.units.mmPerM;
+  const totalBars = count * qty;
+
+  return {
+    mark: member.id + '-' + String(seq).padStart(2, '0'),
+    memberId: member.id,
+    memberType: member.type,
+    memberLabel: MEMBERS[member.type].label,
+    label: bar.label || (CODE.shapes[shape].label + ' ' + d + ' mm'),
+    position: bar.position || 'main',
+    shape: shape,
+    shapeLabel: CODE.shapes[shape].label,
+    dia: d,
+    barsPerMember: count,
+    countDerivation: countDerivation,
+    members: qty,
+    totalBars: totalBars,
+    cuttingLengthMm: cut.mm,
+    cuttingLengthM: round(lenM, 3),
+    totalLengthM: round(lenM * totalBars, 3),
+    unitWeightKgPerM: round(uw, 4),
+    totalWeightKg: round(lenM * totalBars * uw, 3),
+    derivation: cut.derivation,
+    terms: cut.terms,
+    sketch: sketchFor(shape, {
+      lengthMm: run.mm, legMm: legMm, dia: d,
+      hookMm: hookCount ? Math.max(CODE.hook[hookKind] * d, CODE.hook.minMm) : 0,
+      cranks: cranks
+    }),
+    _bar: bar
+  };
+}
+
+/* ---------------------------------------------------------------------
+   STIRRUP ROWS
+   ------------------------------------------------------------------- */
+function stirrupPerimeter(member, st, geom) {
+  const c = member.coverMm, ds = st.dia;
+  const shape = st.shape || 'STIRRUP_RECT';
+  const sec = geom.section(member);
+  const a = sec.aMm, b = sec.bMm;
+
+  if (shape === 'STIRRUP_CIRC') {
+    const dia = st.diameterMm !== undefined ? st.diameterMm : member.concrete.diameterMm;
+    const centre = dia - F() * c - ds;
+    return {
+      mm: Math.PI * centre,
+      note: 'π ' + TIMES + ' ' + fmt(centre) + ' centre-line (' + fmt(dia) + ' ' + MINUS +
+            ' ' + coverNote(c) + ' ' + MINUS + ' ' + ds + ' bar)'
+    };
+  }
+  if (shape === 'STIRRUP_TRI') {
+    const slope = Math.hypot(a / 2, b);
+    return {
+      mm: a + 2 * slope,
+      note: fmt(a) + ' base + 2 ' + TIMES + ' ' + fmt(slope) + ' slope, ' + sec.note
+    };
+  }
+  if (shape === 'STIRRUP_DIA') {
+    const side = Math.hypot(a / 2, b / 2);
+    return { mm: 4 * side, note: '4 ' + TIMES + ' ' + fmt(side) + ' side, ' + sec.note };
+  }
+  return {
+    mm: 2 * (a + b),
+    note: '2 ' + TIMES + ' (' + fmt(a) + ' + ' + fmt(b) + '), ' + sec.note
+  };
+}
+
+function stirrupRow(member, st, geom, seq, warn) {
+  const shape = st.shape || 'STIRRUP_RECT';
+  const def = CODE.shapes[shape];
+  if (!def || !def.hooks) {
+    warn(member, 'INPUT_UNKNOWN', 'Stirrup shape "' + shape + '" is not a stirrup shape.');
+    return null;
+  }
+  const ds = st.dia;
+  const base = stirrupPerimeter(member, st, geom);
+
+  const cut = assemble({
+    dia: ds,
+    base: base,
+    hooks: { count: def.hooks, kind: def.hookKind },
+    bends: def.bends,
+    laps: null, cranks: null
+  });
+
+  const runInfo = geom.stirrupRun(member);
+  const runMm = runInfo.mm - F() * member.coverMm;
+  const count = Math.ceil(runMm / st.spacingMm) + CODE.geometry.endBarAllowance;
+  const countDerivation = 'ceil(' + fmt(runMm) + ' ÷ ' + st.spacingMm + ') + ' +
+    CODE.geometry.endBarAllowance + ' = ' + count +
+    '  [' + fmt(runInfo.mm) + ' ' + runInfo.note + ' ' + MINUS + ' ' + coverNote(member.coverMm) + ']';
+
+  const qty = member.quantity || 1;
+  const uw = CODE.unitWeight(ds);
+  const lenM = cut.mm / CODE.units.mmPerM;
+  const totalBars = count * qty;
+  const sec = geom.section(member);
+
+  return {
+    mark: member.id + '-' + String(seq).padStart(2, '0'),
+    memberId: member.id,
+    memberType: member.type,
+    memberLabel: MEMBERS[member.type].label,
+    label: st.label || ((st.legs ? st.legs + '-legged ' : '') + def.label.toLowerCase()),
+    position: 'stirrup',
+    shape: shape,
+    shapeLabel: def.label,
+    dia: ds,
+    barsPerMember: count,
+    countDerivation: countDerivation,
+    members: qty,
+    totalBars: totalBars,
+    cuttingLengthMm: cut.mm,
+    cuttingLengthM: round(lenM, 3),
+    totalLengthM: round(lenM * totalBars, 3),
+    unitWeightKgPerM: round(uw, 4),
+    totalWeightKg: round(lenM * totalBars * uw, 3),
+    derivation: cut.derivation,
+    terms: cut.terms,
+    spacingMm: st.spacingMm,
+    sketch: sketchFor(shape, {
+      aMm: sec.aMm, bMm: sec.bMm, dia: ds,
+      diaMm: st.diameterMm !== undefined ? st.diameterMm : member.concrete.diameterMm,
+      coverMm: member.coverMm,
+      hookMm: Math.max(CODE.hook[def.hookKind] * ds, CODE.hook.minMm)
+    }),
+    _stirrup: st
+  };
+}
+
+/* ---------------------------------------------------------------------
+   SKETCH DATA — enough for the viewer to draw a dimensioned shape.
+   No drawing code here; the engine stays pure.
+   ------------------------------------------------------------------- */
+function sketchFor(shape, g) {
+  switch (shape) {
+    case 'STRAIGHT':     return { kind: 'straight', lengthMm: g.lengthMm };
+    case 'U_HOOK':       return { kind: 'uhook', lengthMm: g.lengthMm, hookMm: g.hookMm };
+    case 'L_BEND':       return { kind: 'lbend', lengthMm: g.lengthMm, legMm: g.legMm };
+    case 'CRANK':        return { kind: 'crank', lengthMm: g.lengthMm, hookMm: g.hookMm,
+                                  crankMm: g.cranks ? g.cranks.DMm : 0,
+                                  cranks: g.cranks ? g.cranks.count : 0 };
+    case 'STIRRUP_RECT': return { kind: 'rect', aMm: g.aMm, bMm: g.bMm, hookMm: g.hookMm };
+    case 'STIRRUP_TRI':  return { kind: 'tri', aMm: g.aMm, bMm: g.bMm, hookMm: g.hookMm };
+    case 'STIRRUP_DIA':  return { kind: 'dia', aMm: g.aMm, bMm: g.bMm, hookMm: g.hookMm };
+    case 'STIRRUP_CIRC': return { kind: 'circ',
+                                  dMm: (g.diaMm || 0) - CODE.geometry.coverFaces * (g.coverMm || 0),
+                                  hookMm: g.hookMm };
+    default:             return { kind: 'straight', lengthMm: g.lengthMm };
+  }
+}
+
+/* ---------------------------------------------------------------------
+   CHECKS — every one surfaces as a warning. Nothing throws, nothing is
+   silently corrected, no threshold is bent to keep a job quiet.
+   ------------------------------------------------------------------- */
+function effectiveDepthMm(member, geom) {
+  const st = member.stirrups;
+  const mains = (member.bars || []).filter(function (b) { return b.position !== 'distribution'; });
+  const maxMain = mains.length ? Math.max.apply(null, mains.map(function (b) { return b.dia; })) : 0;
+  return geom.depthMm(member) - member.coverMm - (st ? st.dia : 0) - maxMain / 2;
+}
+
+function runChecks(member, rows, geom, warn) {
+  const c = member.coverMm;
+  const type = member.type;
+
+  /* 1. cover */
+  const nominal = CODE.cover[MEMBERS[type].coverKey];
+  if (c < nominal) {
+    warn(member, 'COVER_BELOW_NOMINAL',
+      'Cover ' + c + ' mm is below the ' + nominal + ' mm nominal for a ' +
+      MEMBERS[type].label.toLowerCase() + '. The ' + c + ' mm you gave has been used.',
+      { value: c, limit: nominal });
+  }
+
+  /* 2. stirrup spacing */
+  const st = member.stirrups;
+  if (st && CODE.checks.stirrupSpacingAppliesTo.indexOf(type) >= 0) {
+    const dEff = effectiveDepthMm(member, geom);
+    const byDepth = CODE.limits.stirrupSpacingDepthFactor * dEff;
+    const limit = Math.min(byDepth, CODE.limits.stirrupSpacingMaxMm);
+    if (st.spacingMm > limit) {
+      warn(member, 'STIRRUP_SPACING',
+        'Stirrup spacing ' + st.spacingMm + ' mm exceeds ' + fmt(limit) +
+        ' mm, the lesser of ' + CODE.limits.stirrupSpacingDepthFactor + 'd (' + fmt(byDepth) +
+        ' mm on d = ' + fmt(dEff) + ' mm) and ' + CODE.limits.stirrupSpacingMaxMm + ' mm.',
+        { value: st.spacingMm, limit: round(limit, 1) });
+    }
+  }
+
+  /* 3. congestion */
+  if (CODE.checks.congestionAppliesTo.indexOf(type) >= 0) {
+    const width = member.concrete.widthMm;
+    (member.bars || []).forEach(function (bar, i) {
+      const row = rows.find(function (r) { return r._bar === bar; });
+      const n = row ? row.barsPerMember : bar.count;
+      if (!n || n < 2 || width === undefined) return;
+      const clear = (width - F() * c - F() * (st ? st.dia : 0) - n * bar.dia) / (n - 1);
+      const need = Math.max(bar.dia, CODE.limits.minBarClearMm);
+      if (clear < need) {
+        warn(member, 'BAR_CONGESTION',
+          'Clear spacing ' + fmt(clear) + ' mm between ' + n + ' no. ' + bar.dia +
+          ' mm ' + (bar.position || 'main') + ' bars is below the required ' + need +
+          ' mm (greater of bar dia and ' + CODE.limits.minBarClearMm + ' mm).',
+          { value: round(clear, 1), limit: need, mark: row ? row.mark : null });
+      }
+    });
+  }
+
+  /* 4. lap zone */
+  if (CODE.checks.lapZoneAppliesTo.indexOf(type) >= 0) {
+    (member.bars || []).forEach(function (bar) {
+      if (!bar.laps) return;
+      const avoid = CODE.checks.lapAvoidZone[bar.position];
+      if (!avoid) return;
+      const row = rows.find(function (r) { return r._bar === bar; });
+      const where = avoid === 'midSpan' ? 'mid-span' : 'the support';
+      if (bar.lapZone === avoid) {
+        warn(member, 'LAP_ZONE',
+          bar.laps + ' lap on ' + bar.position + ' steel falls at ' + where +
+          ', where laps are normally avoided.',
+          { mark: row ? row.mark : null });
+      } else if (!bar.lapZone) {
+        warn(member, 'LAP_ZONE',
+          bar.laps + ' lap on ' + bar.position + ' steel with no zone stated. ' +
+          'Confirm it is clear of ' + where + '.',
+          { mark: row ? row.mark : null, severity: 'info' });
+      }
+    });
+  }
+
+  /* 5. stock length */
+  rows.forEach(function (row) {
+    if (row.cuttingLengthMm <= CODE.stockLengthMm) return;
+    const joints = Math.ceil(row.cuttingLengthMm / CODE.stockLengthMm) - 1;
+    const lapType = (row._bar && row._bar.lapType) || 'tension';
+    const each = CODE.lap[lapType] * row.dia;
+    const extra = joints * each;
+    warn(member, 'STOCK_LENGTH',
+      'Cutting length ' + row.cuttingLengthMm + ' mm exceeds the ' + CODE.stockLengthMm +
+      ' mm stock length. ' + joints + ' joint' + (joints > 1 ? 's' : '') + ' needed, adding ' +
+      fmt(extra) + ' mm of lap (' + joints + ' ' + TIMES + ' ' + CODE.lap[lapType] + 'd @ ' +
+      row.dia + ') — order ' + fmt(row.cuttingLengthMm + extra) + ' mm per bar.',
+      { mark: row.mark, joints: joints, extraLapMm: round(extra, 1) });
+  });
+
+  /* 6. bar sizes */
+  rows.forEach(function (row) {
+    if (CODE.barSizes.indexOf(row.dia) >= 0) return;
+    warn(member, 'BAR_SIZE',
+      row.dia + ' mm is not a rolled size. CODE.barSizes lists ' + CODE.barSizes.join(', ') + ' mm.',
+      { mark: row.mark, value: row.dia });
+  });
+}
+
+/* ---------------------------------------------------------------------
+   GENERATE
+   ------------------------------------------------------------------- */
+function generate(job) {
+  const src = (job && job.members) || [];
+  const warnings = [];
+  function warn(member, code, text, extra) {
+    warnings.push(Object.assign({
+      memberId: member ? member.id : null,
+      code: code,
+      severity: 'warn',
+      text: text
+    }, extra || {}));
+  }
+
+  const schedule = [];
+  const members = [];
+
+  src.forEach(function (raw) {
+    const geom = MEMBERS[raw.type];
+    if (!geom) {
+      warn(raw, 'INPUT_UNKNOWN', 'Member type "' + raw.type + '" is not one of ' +
+        Object.keys(MEMBERS).join(', ') + '. Skipped.');
+      return;
+    }
+    // work on a copy so generate() never mutates the caller's job
+    const member = clone(raw);
+    if (member.coverMm === undefined) member.coverMm = CODE.cover[geom.coverKey];
+    member.quantity = member.quantity || 1;
+
+    const missing = geom.dims.filter(function (k) { return member.concrete[k] === undefined; });
+    if (missing.length) {
+      warn(member, 'INPUT_INCOMPLETE',
+        'Missing concrete ' + (missing.length > 1 ? 'dimensions' : 'dimension') + ': ' +
+        missing.join(', ') + '. This member is not scheduled.');
+      members.push({
+        id: member.id, type: member.type, label: geom.label, quantity: member.quantity,
+        coverMm: member.coverMm, incomplete: true, rows: [], steelKg: 0,
+        concreteM3PerMember: 0, concreteM3Total: 0, steelPerM3: 0, unverifiedFields: 0
+      });
+      return;
+    }
+
+    const rows = [];
+    let seq = 1;
+    (member.bars || []).forEach(function (bar) {
+      if (bar.along === undefined) bar.along = geom.defaultAlong;
+      rows.push(barRow(member, bar, geom, seq++, warn));
+    });
+    const stirrupList = member.stirrups
+      ? (Array.isArray(member.stirrups) ? member.stirrups : [member.stirrups])
+      : [];
+    stirrupList.forEach(function (st) {
+      const row = stirrupRow(member, st, geom, seq, warn);
+      if (row) { rows.push(row); seq++; }
+    });
+
+    runChecks(member, rows, geom, warn);
+
+    const volPer = geom.volumeMm3(member) / CODE.units.mm3PerM3;
+    const volTot = volPer * member.quantity;
+    const steel = rows.reduce(function (s, r) { return s + r.totalWeightKg; }, 0);
+    const ratio = volTot > 0 ? steel / volTot : 0;
+
+    if (volTot > 0 && (ratio < CODE.limits.steelRatioMin || ratio > CODE.limits.steelRatioMax)) {
+      warn(member, 'STEEL_RATIO',
+        'Steel ' + fmt(ratio) + ' kg/m³ on ' + round(volTot, 3) + ' m³ of concrete is ' +
+        (ratio < CODE.limits.steelRatioMin ? 'below the ' + CODE.limits.steelRatioMin
+                                           : 'above the ' + CODE.limits.steelRatioMax) +
+        ' kg/m³ sanity ' + (ratio < CODE.limits.steelRatioMin ? 'floor' : 'ceiling') + '.',
+        { value: round(ratio, 1),
+          limit: ratio < CODE.limits.steelRatioMin ? CODE.limits.steelRatioMin : CODE.limits.steelRatioMax });
+    }
+
+    rows.forEach(function (r) { schedule.push(r); });
+    members.push({
+      id: member.id,
+      type: member.type,
+      label: geom.label,
+      quantity: member.quantity,
+      coverMm: member.coverMm,
+      concrete: member.concrete,
+      rows: rows,
+      steelKg: round(steel, 3),
+      concreteM3PerMember: round(volPer, 4),
+      concreteM3Total: round(volTot, 4),
+      steelPerM3: round(ratio, 2),
+      unverifiedFields: countUnverified(raw.provenance)
+    });
+  });
+
+  /* ---- summary ---- */
+  const net = schedule.reduce(function (s, r) { return s + r.totalWeightKg; }, 0);
+  const concrete = members.reduce(function (s, m) { return s + m.concreteM3Total; }, 0);
+  const wastage = net * CODE.wastagePct / CODE.units.percent;
+  const ratio = concrete > 0 ? net / concrete : 0;
+
+  const byDia = CODE.barSizes.concat(
+    schedule.map(function (r) { return r.dia; })
+            .filter(function (d) { return CODE.barSizes.indexOf(d) < 0; })
+  ).filter(function (d, i, a) { return a.indexOf(d) === i; })
+   .map(function (d) {
+     const rows = schedule.filter(function (r) { return r.dia === d; });
+     return {
+       dia: d,
+       marks: rows.length,
+       totalBars: rows.reduce(function (s, r) { return s + r.totalBars; }, 0),
+       lengthM: round(rows.reduce(function (s, r) { return s + r.totalLengthM; }, 0), 3),
+       weightKg: round(rows.reduce(function (s, r) { return s + r.totalWeightKg; }, 0), 3),
+       unitWeightKgPerM: round(CODE.unitWeight(d), 4)
+     };
+   }).filter(function (g) { return g.marks > 0; });
+
+  const byMember = members.map(function (m) {
+    return {
+      id: m.id, label: m.label, quantity: m.quantity,
+      marks: m.rows.length,
+      lengthM: round(m.rows.reduce(function (s, r) { return s + r.totalLengthM; }, 0), 3),
+      weightKg: round(m.steelKg, 3),
+      concreteM3: m.concreteM3Total,
+      steelPerM3: m.steelPerM3
+    };
+  });
+
+  return {
+    project: Object.assign({ name: '', revision: '', date: '' }, (job && job.project) || {}),
+    members: members,
+    schedule: schedule,
+    warnings: warnings,
+    summary: {
+      marks: schedule.length,
+      totalBars: schedule.reduce(function (s, r) { return s + r.totalBars; }, 0),
+      totalLengthM: round(schedule.reduce(function (s, r) { return s + r.totalLengthM; }, 0), 3),
+      netKg: round(net, 3),
+      wastagePct: CODE.wastagePct,
+      wastageKg: round(wastage, 3),
+      grossKg: round(net + wastage, 3),
+      grossTonnes: round((net + wastage) / CODE.units.kgPerTonne, 4),
+      concreteM3: round(concrete, 4),
+      steelPerM3: round(ratio, 2),
+      steelRatioFlag: concrete <= 0 ? 'none'
+        : (ratio < CODE.limits.steelRatioMin ? 'low'
+        : (ratio > CODE.limits.steelRatioMax ? 'high' : 'ok')),
+      byDiameter: byDia,
+      byMember: byMember
+    }
+  };
+}
+
+/* ---------------------------------------------------------------------
+   EXTERNAL INPUT SEAM
+
+   A drawing-extraction module (out of scope for this build) can hand the
+   engine a member array. Everything it supplies is recorded as
+   unverified so the viewer can ask the engineer to confirm each field
+   before the steel is ordered.
+
+   The calculation path never reads `provenance`. Adding this seam does
+   not change a single number — see the seam test.
+   ------------------------------------------------------------------- */
+function adoptExternalMembers(members, source) {
+  const src = source || 'external';
+  return (members || []).map(function (m) {
+    const copy = clone(m);
+    copy.provenance = markUnverified(m, src);
+    return copy;
+  });
+}
+
+function markUnverified(value, src) {
+  if (Array.isArray(value)) return value.map(function (v) { return markUnverified(v, src); });
+  if (value && typeof value === 'object') {
+    const out = {};
+    Object.keys(value).forEach(function (k) { out[k] = markUnverified(value[k], src); });
+    return out;
+  }
+  return { verified: false, source: src, value: value };
+}
+
+function countUnverified(prov) {
+  if (!prov) return 0;
+  if (Array.isArray(prov)) return prov.reduce(function (s, p) { return s + countUnverified(p); }, 0);
+  if (typeof prov !== 'object') return 0;
+  if (prov.verified === false) return 1;
+  return Object.keys(prov).reduce(function (s, k) { return s + countUnverified(prov[k]); }, 0);
+}
+
+/* ------------------------------------------------------------------- */
+const BBS = {
+  CODE: CODE,
+  MEMBERS: MEMBERS,
+  generate: generate,
+  assemble: assemble,
+  adoptExternalMembers: adoptExternalMembers,
+  helpers: { round: round, fmt: fmt, countFromSpacing: countFromSpacing, shapeOf: shapeOf }
+};
+
+if (typeof module !== 'undefined' && module.exports) module.exports = BBS;
+/* ENGINE:END */
+</script>
+
+<script>
+(function(){
+"use strict";
+
+var CODE = BBS.CODE, generate = BBS.generate;
+var $ = function(s){ return document.querySelector(s); };
+function esc(s){ return String(s==null?'':s)
+  .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function n2(v){ return (Math.round(v*100)/100).toFixed(2); }
+function n3(v){ return (Math.round(v*1000)/1000).toFixed(3); }
+function mm(v){ return Math.round(v); }
+
+/* ------------------------------------------------------------------ */
+/* MEMBER TYPE FORMS — which fields appear, and what a first result    */
+/* looks like before the engineer has touched anything.                */
+/* ------------------------------------------------------------------ */
+var TYPES = {
+  footing: { label:'Isolated footing', prefix:'F', dirs:[['length','Along length'],['width','Along width']],
+    dims:[['lengthMm','Length mm',1800],['widthMm','Width mm',1800],['depthMm','Depth mm',450]],
+    bars:[{label:'Bottom X',along:'length',position:'bottom',dia:16,spacingMm:150,end:'bend'},
+          {label:'Bottom Y',along:'width',position:'bottom',dia:16,spacingMm:150,end:'bend'}] },
+
+  column: { label:'Column', prefix:'C', dirs:null,
+    dims:[['widthMm','Width mm',300],['depthMm','Depth mm',450],['heightMm','Height mm',3000]],
+    bars:[{label:'Vertical',position:'main',dia:20,count:6,end:'continuous',laps:1,lapType:'compression'}],
+    stirrups:{shape:'STIRRUP_RECT',dia:8,spacingMm:150,legs:2} },
+
+  beam: { label:'Beam', prefix:'B', dirs:null,
+    dims:[['widthMm','Width mm',300],['depthMm','Depth mm',450],['spanMm','Clear span mm',4000]],
+    bars:[{label:'Bottom main',position:'bottom',dia:16,count:4,end:'hook'}],
+    stirrups:{shape:'STIRRUP_RECT',dia:8,spacingMm:150,legs:2} },
+
+  slabOneWay: { label:'One-way slab', prefix:'S', dirs:[['length','Short span'],['width','Long span']],
+    dims:[['lengthMm','Clear span mm',3000],['widthMm','Long span mm',4500],['thicknessMm','Thickness mm',125]],
+    bars:[{label:'Main',along:'length',position:'bottom',dia:10,spacingMm:150,end:'hook'},
+          {label:'Distribution',along:'width',position:'distribution',dia:8,spacingMm:200,end:'continuous'}] },
+
+  slabTwoWay: { label:'Two-way slab', prefix:'S', dirs:[['length','Short span'],['width','Long span']],
+    dims:[['lengthMm','Short span mm',3600],['widthMm','Long span mm',4200],['thicknessMm','Thickness mm',150]],
+    bars:[{label:'Short span',along:'length',position:'bottom',dia:10,spacingMm:125,end:'hook'},
+          {label:'Long span',along:'width',position:'bottom',dia:10,spacingMm:150,end:'hook'}] },
+
+  lintel: { label:'Lintel', prefix:'L', dirs:null,
+    dims:[['widthMm','Width mm',230],['depthMm','Depth mm',150],['spanMm','Clear span mm',1200],
+          ['bearingMm','Bearing mm',200]],
+    bars:[{label:'Bottom',position:'bottom',dia:10,count:2,end:'hook'}],
+    stirrups:{shape:'STIRRUP_RECT',dia:6,spacingMm:150,legs:2} },
+
+  staircase: { label:'Staircase flight', prefix:'ST', dirs:[['flight','Along flight'],['width','Across width']],
+    dims:[['riserMm','Riser mm',165],['treadMm','Tread mm',280],['treads','Treads no.',10],
+          ['waistMm','Waist mm',150],['widthMm','Width mm',1200],
+          ['landingAMm','Landing A mm',1200],['landingBMm','Landing B mm',1200]],
+    bars:[{label:'Main',along:'flight',position:'bottom',dia:12,spacingMm:150,end:'bend'},
+          {label:'Distribution',along:'width',position:'distribution',dia:8,spacingMm:200,end:'continuous'}] }
+};
+var POSITIONS = [['bottom','Bottom'],['top','Top'],['main','Main'],['distribution','Distribution'],['side','Side face']];
+var ZONES = [['','Not stated'],['midSpan','Mid-span'],['support','Over support'],['quarterSpan','Quarter span']];
+
+function newMember(type){
+  var T = TYPES[type];
+  var m = { id: nextId(T.prefix), type: type, quantity: 1,
+            coverMm: CODE.cover[BBS.MEMBERS[type].coverKey], concrete: {}, bars: [] };
+  T.dims.forEach(function(d){ m.concrete[d[0]] = d[2]; });
+  m.bars = T.bars.map(function(b){
+    var c = {}; for (var k in b) c[k] = b[k];
+    c._by = (c.count !== undefined) ? 'count' : 'spacing';
+    if (c._by === 'spacing') c.count = undefined;
+    return c;
+  });
+  if (T.stirrups){ m.stirrups = {}; for (var k in T.stirrups) m.stirrups[k] = T.stirrups[k]; }
+  return m;
+}
+function nextId(prefix){
+  var n = 1, used = state ? state.members.map(function(m){ return m.id; }) : [];
+  while (used.indexOf(prefix + n) >= 0) n++;
+  return prefix + n;
+}
+
+/* ------------------------------------------------------------------ */
+/* STATE — in memory only. No storage APIs anywhere in this file.      */
+/* ------------------------------------------------------------------ */
+var state = { members: [], group:'member', open:null, out:null };
+state.members = [ newMember('beam') ];
+
+/* Strip the viewer's own bookkeeping before handing the job to the
+   engine: `_by` decides whether count or spacing drives the bar count. */
+function jobFromState(){
+  return {
+    project: { name: $('#pName').value, set: $('#pSet').value,
+               date: $('#pDate').value, revision: $('#pRev').value },
+    members: state.members.map(function(m){
+      var out = { id:m.id, type:m.type, quantity:+m.quantity||1, coverMm:+m.coverMm,
+                  concrete:{}, bars:[] };
+      Object.keys(m.concrete).forEach(function(k){ out.concrete[k] = +m.concrete[k]; });
+      out.bars = m.bars.map(function(b){
+        var o = { label:b.label, position:b.position, along:b.along, dia:+b.dia, end:b.end };
+        if (b._by === 'count') o.count = +b.count || 1; else o.spacingMm = +b.spacingMm || 1;
+        if (+b.laps > 0){ o.laps = +b.laps; o.lapType = b.lapType || 'tension';
+                          if (b.lapZone) o.lapZone = b.lapZone; }
+        if (b.bendLegMm !== undefined && b.bendLegMm !== '') o.bendLegMm = +b.bendLegMm;
+        return o;
+      });
+      if (m.stirrups){
+        out.stirrups = { shape:m.stirrups.shape, dia:+m.stirrups.dia,
+                         spacingMm:+m.stirrups.spacingMm || 1, legs:+m.stirrups.legs || 2 };
+        if (m.stirrups.diameterMm) out.stirrups.diameterMm = +m.stirrups.diameterMm;
+      }
+      return out;
+    })
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* SHAPE DIAGRAMS — sheet style, real dimension lines with ticks.      */
+/* Runs are drawn in ink; hooks, legs and cranks in the accent.        */
+/* ------------------------------------------------------------------ */
+var INK='#14171a', ACC='#e07b1e';
+function ln(S,x1,y1,x2,y2,w,col,op){
+  S.push('<line x1="'+x1+'" y1="'+y1+'" x2="'+x2+'" y2="'+y2+'" stroke="'+(col||INK)+
+         '" stroke-width="'+w+'"'+(op?' stroke-opacity="'+op+'"':'')+' stroke-linecap="round"/>');
+}
+function tx(S,x,y,t,sz,col,anch){
+  S.push('<text x="'+x+'" y="'+y+'" font-size="'+(sz||7.5)+'" fill="'+(col||INK)+
+         '" text-anchor="'+(anch||'middle')+'">'+esc(t)+'</text>');
+}
+function dimH(S,x1,x2,y,t,from){
+  if (from !== undefined){ ln(S,x1,from,x1,y-2,.5,INK,.35); ln(S,x2,from,x2,y-2,.5,INK,.35); }
+  ln(S,x1,y,x2,y,.7);
+  ln(S,x1,y-3,x1,y+3,.7); ln(S,x2,y-3,x2,y+3,.7);
+  tx(S,(x1+x2)/2,y-4.5,t,7.5);
+}
+function dimV(S,y1,y2,x,t,from){
+  if (from !== undefined){ ln(S,from,y1,x+2,y1,.5,INK,.35); ln(S,from,y2,x+2,y2,.5,INK,.35); }
+  ln(S,x,y1,x,y2,.7);
+  ln(S,x-3,y1,x+3,y1,.7); ln(S,x-3,y2,x+3,y2,.7);
+  var my=(y1+y2)/2;
+  S.push('<text x="'+(x-4)+'" y="'+my+'" font-size="7.5" fill="'+INK+
+         '" text-anchor="middle" transform="rotate(-90 '+(x-4)+' '+my+')">'+esc(t)+'</text>');
+}
+function gapRect(S,x0,y0,x1,y1,g,t){
+  S.push('<path d="M '+(x0+g)+','+y0+' L '+x1+','+y0+' L '+x1+','+y1+' L '+x0+','+y1+
+         ' L '+x0+','+(y0+g)+'" fill="none" stroke="'+INK+'" stroke-width="2"/>');
+  ln(S,x0+g,y0,x0+g+t,y0+t,2,ACC);
+  ln(S,x0,y0+g,x0+t,y0+g+t,2,ACC);
+}
+
+/* Column thumbnail: its own tight coordinate box, so the shape fills the
+   cell instead of shrinking to a sliver inside the full-size viewBox. */
+function miniSVG(row){
+  var sk = row.sketch || { kind:'straight' }, k = sk.kind, S = [];
+  var ring = (k==='rect'||k==='tri'||k==='dia'||k==='circ');
+  var W = ring ? 46 : 120, H = 34;
+  S.push('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+W+' '+H+'" '+
+         'role="img" aria-label="'+esc(row.shapeLabel)+'">');
+
+  if (k === 'straight'){
+    ln(S,6,17,114,17,2.2);
+  } else if (k === 'uhook'){
+    ln(S,14,20,106,20,2.2);
+    S.push('<path d="M 14,20 A 4,4 0 0 0 14,12 L 25,12" fill="none" stroke="'+ACC+'" stroke-width="2"/>');
+    S.push('<path d="M 106,20 A 4,4 0 0 1 106,12 L 95,12" fill="none" stroke="'+ACC+'" stroke-width="2"/>');
+  } else if (k === 'lbend'){
+    ln(S,12,11,108,11,2.2);
+    ln(S,12,11,12,28,2,ACC); ln(S,108,11,108,28,2,ACC);
+  } else if (k === 'crank'){
+    S.push('<path d="M 6,24 L 38,24 L 52,12 L 74,12 L 88,24 L 114,24" fill="none" stroke="'+INK+
+           '" stroke-width="2.2" stroke-linejoin="round"/>');
+    ln(S,38,24,52,12,2.2,ACC); ln(S,74,12,88,24,2.2,ACC);
+  } else if (k === 'circ'){
+    var r = 13, cx = 23, cy = 18;
+    S.push('<path d="M '+cx+','+(cy-r)+' A '+r+','+r+' 0 1 1 '+(cx-r*0.5)+','+(cy-r*0.87)+
+           '" fill="none" stroke="'+INK+'" stroke-width="2"/>');
+    ln(S,cx,cy-r,cx+5,cy-r+5,1.8,ACC);
+  } else {
+    var A = sk.aMm||1, B = sk.bMm||1;
+    var sc = Math.min(30/A, 26/B), w = A*sc, h = B*sc;
+    var x0 = (W-w)/2, y0 = (H-h)/2, x1 = x0+w, y1 = y0+h;
+    var g = Math.min(5, w*0.24), t = Math.min(6, w*0.3);
+    if (k === 'rect'){
+      gapRect(S,x0,y0,x1,y1,g,t);
+    } else if (k === 'tri'){
+      var cxx=(x0+x1)/2;
+      S.push('<path d="M '+(cxx+g/2)+','+y0+' L '+x1+','+y1+' L '+x0+','+y1+' L '+(cxx-g/2)+','+y0+
+             '" fill="none" stroke="'+INK+'" stroke-width="1.8"/>');
+      ln(S,cxx+g/2,y0,cxx+g/2+t*0.7,y0+t,1.8,ACC);
+    } else {
+      var cx2=(x0+x1)/2, cy2=(y0+y1)/2;
+      S.push('<path d="M '+(cx2+g/2)+','+y0+' L '+x1+','+cy2+' L '+cx2+','+y1+' L '+x0+','+cy2+
+             ' L '+(cx2-g/2)+','+y0+'" fill="none" stroke="'+INK+'" stroke-width="1.8"/>');
+      ln(S,cx2+g/2,y0,cx2+g/2+t*0.7,y0+t,1.8,ACC);
+    }
+  }
+  S.push('</svg>');
+  return S.join('');
+}
+
+function shapeSVG(row, full){
+  if (!full) return miniSVG(row);
+  var sk = row.sketch || { kind:'straight', lengthMm: row.cuttingLengthMm };
+  var W = 268, H = 132, S = [];
+  S.push('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+W+' '+H+'" '+
+         'font-family="ui-monospace,Menlo,Consolas,monospace" role="img" aria-label="'+
+         esc(row.shapeLabel)+' '+row.dia+' mm">');
+  var k = sk.kind, y = 44, dy = 86;
+
+  if (k === 'straight'){
+    ln(S,26,y,242,y,2.6);
+    dimH(S,26,242,dy,mm(row.cuttingLengthMm)+' mm',y+4);
+
+  } else if (k === 'uhook'){
+    var a=44, b=224, r=6, ty=y-12;
+    ln(S,a,y,b,y,2.6);
+    S.push('<path d="M '+a+','+y+' A '+r+','+r+' 0 0 0 '+a+','+ty+' L '+(a+20)+','+ty+
+           '" fill="none" stroke="'+ACC+'" stroke-width="2.2" stroke-linecap="round"/>');
+    S.push('<path d="M '+b+','+y+' A '+r+','+r+' 0 0 1 '+b+','+ty+' L '+(b-20)+','+ty+
+           '" fill="none" stroke="'+ACC+'" stroke-width="2.2" stroke-linecap="round"/>');
+    {
+      dimH(S,a,b,dy,mm(sk.lengthMm)+' mm run',y+4);
+      tx(S,W/2,dy+15,'+ 2 hooks @ '+mm(sk.hookMm)+' mm  =  '+mm(row.cuttingLengthMm)+' mm',7.5,ACC);
+    }
+
+  } else if (k === 'lbend'){
+    var a2=48, b2=220, ly=y+34;
+    ln(S,a2,y,b2,y,2.6);
+    ln(S,a2,y,a2,ly,2.4,ACC); ln(S,b2,y,b2,ly,2.4,ACC);
+    {
+      dimH(S,a2,b2,dy,mm(sk.lengthMm)+' mm run',ly+3);
+      dimV(S,y,ly,246,mm(sk.legMm)+' leg',b2+3);
+      tx(S,W/2,dy+15,'total '+mm(row.cuttingLengthMm)+' mm',7.5,ACC);
+    }
+
+  } else if (k === 'crank'){
+    var lo = y+12, hi = y-12;
+    S.push('<path d="M 24,'+lo+' L 84,'+lo+' L 110,'+hi+' L 158,'+hi+' L 184,'+lo+' L 244,'+lo+
+           '" fill="none" stroke="'+INK+'" stroke-width="2.6" stroke-linejoin="round"/>');
+    ln(S,84,lo,110,hi,2.6,ACC); ln(S,158,hi,184,lo,2.6,ACC);
+    {
+      dimH(S,24,244,dy,mm(sk.lengthMm)+' mm run',lo+3);
+      dimV(S,hi,lo,258,'D '+mm(sk.crankMm),184);
+      tx(S,W/2,dy+15,sk.cranks+' cranks  ·  total '+mm(row.cuttingLengthMm)+' mm',7.5,ACC);
+    }
+
+  } else if (k === 'circ'){
+    var cy = 52, rr = 34, cx = 112;
+    S.push('<path d="M '+cx+','+(cy-rr)+' A '+rr+','+rr+' 0 1 1 '+(cx-rr*0.44)+','+(cy-rr*0.9)+
+           '" fill="none" stroke="'+INK+'" stroke-width="2.4"/>');
+    ln(S,cx,cy-rr,cx+11,cy-rr+11,2.2,ACC);
+    ln(S,cx-rr*0.44,cy-rr*0.9,cx-rr*0.44+9,cy-rr*0.9+13,2.2,ACC);
+    {
+      dimH(S,cx-rr,cx+rr,dy,mm(sk.dMm)+' mm o/d',cy+rr);
+      tx(S,206,cy-6,'centre-line',7,INK); tx(S,206,cy+5,'π × Ø − bar',7,INK);
+      tx(S,W/2,dy+15,'+ 2 hooks @ '+mm(sk.hookMm)+' mm  =  '+mm(row.cuttingLengthMm)+' mm',7.5,ACC);
+    }
+
+  } else {
+    /* rect / tri / dia — drawn to the real a : b aspect */
+    var A = sk.aMm || 1, B = sk.bMm || 1;
+    var maxW = 104, maxH = 68;
+    var sc = Math.min(maxW/A, maxH/B), w = A*sc, h = B*sc;
+    var x0 = 58, y0 = 14, x1 = x0+w, y1 = y0+h;
+    var g = Math.min(10, w*0.22), t = Math.min(13, w*0.3);
+
+    if (k === 'rect'){
+      gapRect(S,x0,y0,x1,y1,g,t);
+    } else if (k === 'tri'){
+      var cxx = (x0+x1)/2;
+      S.push('<path d="M '+(cxx+g/2)+','+y0+' L '+x1+','+y1+' L '+x0+','+y1+' L '+(cxx-g/2)+','+y0+
+             '" fill="none" stroke="'+INK+'" stroke-width="2"/>');
+      ln(S,cxx+g/2,y0,cxx+g/2+t*0.7,y0+t,2,ACC);
+      ln(S,cxx-g/2,y0,cxx-g/2-t*0.7,y0+t,2,ACC);
+    } else {
+      var cx2=(x0+x1)/2, cy2=(y0+y1)/2;
+      S.push('<path d="M '+(cx2+g/2)+','+y0+' L '+x1+','+cy2+' L '+cx2+','+y1+' L '+x0+','+cy2+
+             ' L '+(cx2-g/2)+','+y0+'" fill="none" stroke="'+INK+'" stroke-width="2"/>');
+      ln(S,cx2+g/2,y0,cx2+g/2+t*0.7,y0+t,2,ACC);
+      ln(S,cx2-g/2,y0,cx2-g/2-t*0.7,y0+t,2,ACC);
+    }
+    {
+      dimH(S,x0,x1,y1+22,mm(A)+' mm',y1+2);
+      dimV(S,y0,y1,x0-14,mm(B)+' mm',x0-2);
+      tx(S,192,44,'+ 2 hooks @ '+mm(sk.hookMm)+' mm',7,ACC);
+      tx(S,192,56,'less bend deductions',7,INK);
+      tx(S,192,72,mm(row.cuttingLengthMm)+' mm',9.5,INK);
+    }
+  }
+  S.push('</svg>');
+  return S.join('');
+}
+
+/* ------------------------------------------------------------------ */
+/* MEMBER EDITOR                                                       */
+/* ------------------------------------------------------------------ */
+function fnum(path, label, val, step){
+  return '<div class="field"><label>'+esc(label)+'</label><input type="number" inputmode="decimal"'+
+    (step?' step="'+step+'"':'')+' data-p="'+path+'" data-t="n" value="'+esc(val)+'"></div>';
+}
+function ftext(path, label, val){
+  return '<div class="field"><label>'+esc(label)+'</label><input type="text" data-p="'+path+
+    '" data-t="s" value="'+esc(val)+'"></div>';
+}
+function fsel(path, label, val, opts, structural){
+  return '<div class="field"><label>'+esc(label)+'</label><select data-p="'+path+'" data-t="s"'+
+    (structural?' data-struct="1"':'')+'>'+opts.map(function(o){
+      var v=o[0], t=o[1];
+      return '<option value="'+esc(v)+'"'+(String(v)===String(val)?' selected':'')+'>'+esc(t)+'</option>';
+    }).join('')+'</select></div>';
+}
+var DIA_OPTS = CODE.barSizes.map(function(d){ return [d, d+' mm']; });
+var END_OPTS = Object.keys(CODE.ends).map(function(k){ return [k, CODE.ends[k].label]; });
+var STIRRUP_OPTS = Object.keys(CODE.shapes).filter(function(k){ return CODE.shapes[k].hooks; })
+                     .map(function(k){ return [k, CODE.shapes[k].label]; });
+
+function barEditor(m, b, mi, bi){
+  var T = TYPES[m.type];
+  var h = ['<div class="subbar"><span>Bar '+(bi+1)+' — '+esc(b.label||'')+'</span>'+
+           '<button class="mini" data-act="delbar" data-mi="'+mi+'" data-bi="'+bi+'">Remove</button></div>'];
+  h.push('<div class="strip">');
+  h.push(ftext('bars.'+bi+'.label','Label',b.label||''));
+  h.push(fsel('bars.'+bi+'.dia','Dia',b.dia,DIA_OPTS));
+  h.push(fsel('bars.'+bi+'.position','Position',b.position,POSITIONS));
+  if (T.dirs) h.push(fsel('bars.'+bi+'.along','Direction',b.along,T.dirs));
+  h.push(fsel('bars.'+bi+'._by','Set by',b._by,[['count','Count'],['spacing','Spacing']],true));
+  h.push(b._by === 'count'
+    ? fnum('bars.'+bi+'.count','Bars per member',b.count===undefined?1:b.count,'1')
+    : fnum('bars.'+bi+'.spacingMm','Spacing mm',b.spacingMm===undefined?150:b.spacingMm,'5'));
+  h.push(fsel('bars.'+bi+'.end','Ends',b.end,END_OPTS));
+  h.push(fnum('bars.'+bi+'.laps','Laps',b.laps||0,'1'));
+  if (+b.laps > 0){
+    h.push(fsel('bars.'+bi+'.lapType','Lap type',b.lapType||'tension',[['tension','Tension 50d'],['compression','Compression 40d']]));
+    h.push(fsel('bars.'+bi+'.lapZone','Lap zone',b.lapZone||'',ZONES));
+  }
+  h.push('</div>');
+  return h.join('');
+}
+
+function memberEditor(m, mi){
+  var T = TYPES[m.type];
+  var h = ['<div class="mbody" data-mi="'+mi+'">'];
+
+  h.push('<div class="chips">'+Object.keys(TYPES).map(function(k){
+    return '<button data-act="type" data-mi="'+mi+'" data-type="'+k+'"'+
+           (k===m.type?' class="on"':'')+'>'+esc(TYPES[k].label)+'</button>';
+  }).join('')+'</div>');
+
+  h.push('<div class="strip">');
+  h.push(ftext('id','Mark',m.id));
+  h.push(fnum('quantity','No. of members',m.quantity,'1'));
+  h.push(fnum('coverMm','Clear cover mm',m.coverMm,'5'));
+  T.dims.forEach(function(d){ h.push(fnum('concrete.'+d[0], d[1], m.concrete[d[0]], '5')); });
+  h.push('</div>');
+
+  m.bars.forEach(function(b,bi){ h.push(barEditor(m,b,mi,bi)); });
+
+  h.push('<div class="subbar"><span>&nbsp;</span>'+
+         '<button class="mini a" data-act="addbar" data-mi="'+mi+'">+ Bar</button>'+
+         (m.stirrups
+            ? '<button class="mini" data-act="delstirrup" data-mi="'+mi+'">Remove stirrups</button>'
+            : '<button class="mini a" data-act="addstirrup" data-mi="'+mi+'">+ Stirrups</button>')+
+         '</div>');
+
+  if (m.stirrups){
+    h.push('<div class="subbar"><span>Stirrups / ties</span></div><div class="strip">');
+    h.push(fsel('stirrups.shape','Shape',m.stirrups.shape,STIRRUP_OPTS,true));
+    h.push(fsel('stirrups.dia','Dia',m.stirrups.dia,DIA_OPTS));
+    h.push(fnum('stirrups.spacingMm','Spacing c/c mm',m.stirrups.spacingMm,'5'));
+    h.push(fnum('stirrups.legs','Legs',m.stirrups.legs,'1'));
+    if (m.stirrups.shape === 'STIRRUP_CIRC')
+      h.push(fnum('stirrups.diameterMm','Column dia mm',m.stirrups.diameterMm||450,'5'));
+    h.push('</div>');
+  }
+
+  h.push('<div class="subbar"><span>&nbsp;</span>'+
+         '<button class="mini" data-act="dup" data-mi="'+mi+'">Duplicate</button>'+
+         '<button class="mini" data-act="delmember" data-mi="'+mi+'">Delete member</button></div>');
+  h.push('</div>');
+  return h.join('');
+}
+
+function memberDesc(m){
+  var T = TYPES[m.type];
+  return T.dims.slice(0,3).map(function(d){ return m.concrete[d[0]]; }).join(' × ') +
+         '  ·  cover ' + m.coverMm + '  ·  ' + m.bars.length + ' bar set' +
+         (m.bars.length===1?'':'s') + (m.stirrups ? ' + stirrups' : '');
+}
+
+function renderMembers(){
+  var byId = {};
+  if (state.out) state.out.members.forEach(function(r){ byId[r.id] = r; });
+
+  $('#members').innerHTML = state.members.map(function(m,mi){
+    var res = byId[m.id];
+    return '<div class="mcard'+(m._open?' open':'')+'">'+
+      '<div class="mhead" data-act="toggle" data-mi="'+mi+'">'+
+        '<span class="mid">'+esc(m.id)+'</span>'+
+        '<span class="mdesc">'+esc(TYPES[m.type].label)+' × '+m.quantity+'  ·  '+esc(memberDesc(m))+'</span>'+
+        '<span class="mkg">'+(res ? n2(res.steelKg)+' kg' : '—')+'</span>'+
+        '<span class="chev">'+(m._open?'−':'+')+'</span>'+
+      '</div>'+ memberEditor(m,mi) + '</div>';
+  }).join('') +
+  '<button class="addm" data-act="addmember">+ Add member</button>';
+
+  $('#memcount').textContent = state.members.length + ' member set' + (state.members.length===1?'':'s');
+}
+
+/* ------------------------------------------------------------------ */
+/* RESULTS                                                             */
+/* ------------------------------------------------------------------ */
+function cell(b,s,flag){ return '<div class="cell"><b'+(flag?' class="flag"':'')+'>'+esc(b)+
+  '</b><span>'+esc(s)+'</span></div>'; }
+
+function renderReadout(){
+  var s = state.out.summary;
+  $('#readout').innerHTML = [
+    cell(s.marks,'bar marks'),
+    cell(s.totalBars,'total bars'),
+    cell(n2(s.totalLengthM),'total length m'),
+    cell(n2(s.netKg),'net steel kg'),
+    cell(n2(s.wastageKg),'wastage '+s.wastagePct+'% kg'),
+    cell(n2(s.grossKg),'order kg'),
+    cell(n3(s.grossTonnes),'order tonnes'),
+    cell(n3(s.concreteM3),'concrete m³'),
+    cell(n2(s.steelPerM3), s.steelRatioFlag==='ok' ? 'kg/m³ · in range' : 'kg/m³ · '+s.steelRatioFlag,
+         s.steelRatioFlag!=='ok' && s.steelRatioFlag!=='none')
+  ].join('');
+}
+
+function renderWarnings(){
+  var ws = state.out.warnings;
+  $('#warncount').textContent = ws.length ? ws.length + ' to review' : 'all clear';
+  if (!ws.length){
+    $('#warnbox').innerHTML = '<div class="none">No check failed. Cover, stirrup spacing, bar '+
+      'spacing, lap zones, stock length and steel ratio are all inside the CODE limits.</div>';
+    return;
+  }
+  var groups = {}, order = [];
+  ws.forEach(function(w){
+    var k = w.memberId || '—';
+    if (!groups[k]){ groups[k] = []; order.push(k); }
+    groups[k].push(w);
+  });
+  $('#warnbox').innerHTML = order.map(function(k){
+    return '<div class="wgrp"><div class="wid">'+esc(k)+'</div>'+
+      groups[k].map(function(w){
+        return '<div class="w"><code>'+esc(w.code.replace(/_/g,' '))+
+               (w.mark?' · '+esc(w.mark):'')+'</code><div>'+esc(w.text)+'</div></div>';
+      }).join('')+'</div>';
+  }).join('');
+}
+
+var HEAD = '<thead><tr><th>Mark</th><th>Member</th><th>Shape</th><th class="num">Dia</th>'+
+  '<th class="num">Bars/mem</th><th class="num">Members</th><th class="num">Total bars</th>'+
+  '<th class="num">Cut length m</th><th class="num">Total length m</th>'+
+  '<th class="num">Unit kg/m</th><th class="num">Weight kg</th></tr></thead>';
+var COLS = 11;
+
+function rowHTML(r, flagged){
+  return '<tr class="row'+(state.open===r.mark?' on':'')+'" data-mark="'+esc(r.mark)+
+    '" tabindex="0" aria-expanded="'+(state.open===r.mark)+'">'+
+    '<td class="mk">'+(flagged?'<span class="warnmark">▲ </span>':'')+esc(r.mark)+'</td>'+
+    '<td>'+esc(r.memberId)+' · '+esc(r.label)+'</td>'+
+    '<td><div class="shapecell">'+shapeSVG(r,false)+'<b>'+esc(r.shape.replace(/_/g,' '))+'</b></div></td>'+
+    '<td class="num">'+r.dia+'</td>'+
+    '<td class="num">'+r.barsPerMember+'</td>'+
+    '<td class="num">'+r.members+'</td>'+
+    '<td class="num">'+r.totalBars+'</td>'+
+    '<td class="num"><span class="cut">'+n3(r.cuttingLengthM)+'</span></td>'+
+    '<td class="num">'+n3(r.totalLengthM)+'</td>'+
+    '<td class="num">'+n3(r.unitWeightKgPerM)+'</td>'+
+    '<td class="num">'+n2(r.totalWeightKg)+'</td></tr>' +
+    (state.open===r.mark ? detailHTML(r) : '');
+}
+
+function detailHTML(r){
+  var h = ['<tr class="detail"><td colspan="'+COLS+'"><div class="dgrid">'];
+  h.push('<div class="dshape">'+shapeSVG(r,true)+'</div><div>');
+  h.push('<div class="dlab">Cutting length</div><div class="dder">'+esc(r.derivation)+'</div>');
+  if (r.countDerivation)
+    h.push('<div class="dlab">Number of bars per member</div><div class="dder">'+esc(r.countDerivation)+'</div>');
+  h.push('<div class="dlab">Weight</div><div class="dder">'+
+    n3(r.cuttingLengthM)+' m × '+r.totalBars+' bars × '+n3(r.unitWeightKgPerM)+
+    ' kg/m (d²/162) = '+n2(r.totalWeightKg)+' kg</div>');
+  h.push('</div></div></td></tr>');
+  return h.join('');
+}
+
+function renderSchedule(){
+  var out = state.out, rows = out.schedule;
+  var flagged = {};
+  out.warnings.forEach(function(w){ if (w.mark) flagged[w.mark] = true; });
+
+  var h = [HEAD, '<tbody>'];
+  if (!rows.length){
+    h.push('<tr><td colspan="'+COLS+'" style="color:var(--steel)">No bars scheduled yet.</td></tr>');
+  } else if (state.group === 'member'){
+    out.members.forEach(function(m){
+      if (!m.rows.length) return;
+      h.push('<tr class="sub"><td colspan="'+COLS+'">'+esc(m.id)+' · '+esc(m.label)+' × '+m.quantity+
+             '  ·  '+n2(m.steelKg)+' kg  ·  '+n3(m.concreteM3Total)+' m³  ·  '+
+             n2(m.steelPerM3)+' kg/m³</td></tr>');
+      m.rows.forEach(function(r){ h.push(rowHTML(r, flagged[r.mark])); });
+    });
+  } else {
+    out.summary.byDiameter.forEach(function(g){
+      h.push('<tr class="sub"><td colspan="'+COLS+'">Ø '+g.dia+' mm  ·  '+g.totalBars+' bars  ·  '+
+             n2(g.lengthM)+' m  ·  '+n2(g.weightKg)+' kg</td></tr>');
+      rows.filter(function(r){ return r.dia === g.dia; })
+          .forEach(function(r){ h.push(rowHTML(r, flagged[r.mark])); });
+    });
+  }
+  h.push('<tr class="tot"><td colspan="7">Net steel, all marks</td>'+
+         '<td class="num" colspan="3">'+n2(out.summary.totalLengthM)+' m</td>'+
+         '<td class="num">'+n2(out.summary.netKg)+'</td></tr>');
+  h.push('</tbody>');
+  $('#sched').innerHTML = h.join('');
+}
+
+function renderSummary(){
+  var s = state.out.summary;
+  var h = ['<thead><tr><th>Diameter</th><th class="num">Marks</th><th class="num">Bars</th>'+
+           '<th class="num">Length m</th><th class="num">kg/m</th><th class="num">Weight kg</th>'+
+           '<th class="num">Tonnes</th></tr></thead><tbody>'];
+  s.byDiameter.forEach(function(g){
+    h.push('<tr><td>Ø '+g.dia+' mm</td><td class="num">'+g.marks+'</td><td class="num">'+g.totalBars+
+           '</td><td class="num">'+n2(g.lengthM)+'</td><td class="num">'+n3(g.unitWeightKgPerM)+
+           '</td><td class="num">'+n2(g.weightKg)+'</td><td class="num">'+
+           n3(g.weightKg/CODE.units.kgPerTonne)+'</td></tr>');
+  });
+  if (!s.byDiameter.length)
+    h.push('<tr><td colspan="7" style="color:var(--steel)">Nothing scheduled yet.</td></tr>');
+  h.push('<tr class="tot"><td colspan="5">Net steel</td><td class="num">'+n2(s.netKg)+
+         '</td><td class="num">'+n3(s.netKg/CODE.units.kgPerTonne)+'</td></tr>');
+  h.push('<tr><td colspan="5">Wastage @ '+s.wastagePct+'%</td><td class="num">'+n2(s.wastageKg)+
+         '</td><td class="num">'+n3(s.wastageKg/CODE.units.kgPerTonne)+'</td></tr>');
+  h.push('<tr class="tot"><td colspan="5">Order quantity</td><td class="num">'+n2(s.grossKg)+
+         '</td><td class="num">'+n3(s.grossTonnes)+'</td></tr>');
+  h.push('<tr class="sub"><td colspan="7">Sanity</td></tr>');
+  h.push('<tr><td colspan="5">Concrete '+n3(s.concreteM3)+' m³ · steel '+n2(s.steelPerM3)+
+         ' kg/m³ · limits '+CODE.limits.steelRatioMin+'–'+CODE.limits.steelRatioMax+'</td>'+
+         '<td class="num" colspan="2"'+(s.steelRatioFlag!=='ok'?' style="color:var(--accent);font-weight:700"':'')+
+         '>'+(s.steelRatioFlag==='ok'?'in range':s.steelRatioFlag==='none'?'—':s.steelRatioFlag)+'</td></tr>');
+  h.push('</tbody>');
+  $('#summary').innerHTML = h.join('');
+  $('#sumhint').textContent = 'wastage ' + s.wastagePct + '% · stock ' + CODE.stockLengthMm + ' mm';
+}
+
+function renderTitleBlock(){
+  var p = { name: $('#pName').value || '—', set: $('#pSet').value || '—',
+            date: $('#pDate').value || '—', rev: $('#pRev').value || '—' };
+  var s = state.out.summary;
+  $('#titleblock').innerHTML =
+    '<div class="tbmain">'+
+      '<div class="k">Project</div><div class="v">'+esc(p.name)+'</div>'+
+      '<div class="tbt">Bar bending schedule</div>'+
+      '<div class="k" style="margin-top:9px">Member set</div><div class="v" style="font-size:12px">'+
+        esc(p.set)+'  ·  '+state.members.length+' member set'+(state.members.length===1?'':'s')+'  ·  '+s.marks+' bar marks</div>'+
+    '</div>'+
+    '<div class="tbside">'+
+      '<div class="tbcell"><div class="k">Revision</div><div class="v">'+esc(p.rev)+'</div></div>'+
+      '<div class="tbcell"><div class="k">Date</div><div class="v">'+esc(p.date)+'</div></div>'+
+      '<div class="tbcell"><div class="k">Order qty</div><div class="v">'+n3(s.grossTonnes)+' t</div></div>'+
+    '</div>';
+}
+
+/* ------------------------------------------------------------------ */
+/* TSV EXPORT                                                          */
+/* ------------------------------------------------------------------ */
+function tsv(){
+  var s = state.out.summary;
+  var L = [];
+  L.push(['Project', $('#pName').value, 'Member set', $('#pSet').value,
+          'Date', $('#pDate').value, 'Revision', $('#pRev').value].join('\t'));
+  L.push('');
+  L.push(['Mark','Member','Member type','Bar','Shape','Dia mm','Bars per member','Members',
+          'Total bars','Cutting length m','Total length m','Unit weight kg/m','Weight kg',
+          'Derivation'].join('\t'));
+  state.out.schedule.forEach(function(r){
+    L.push([r.mark, r.memberId, r.memberLabel, r.label, r.shape, r.dia, r.barsPerMember,
+            r.members, r.totalBars, n3(r.cuttingLengthM), n3(r.totalLengthM),
+            n3(r.unitWeightKgPerM), n2(r.totalWeightKg), r.derivation].join('\t'));
+  });
+  L.push('');
+  L.push(['Diameter','Marks','Bars','Length m','kg/m','Weight kg','Tonnes'].join('\t'));
+  s.byDiameter.forEach(function(g){
+    L.push(['Ø '+g.dia, g.marks, g.totalBars, n2(g.lengthM), n3(g.unitWeightKgPerM),
+            n2(g.weightKg), n3(g.weightKg/CODE.units.kgPerTonne)].join('\t'));
+  });
+  L.push('');
+  L.push(['Net steel kg', n2(s.netKg)].join('\t'));
+  L.push(['Wastage '+s.wastagePct+'% kg', n2(s.wastageKg)].join('\t'));
+  L.push(['Order quantity kg', n2(s.grossKg)].join('\t'));
+  L.push(['Order quantity tonnes', n3(s.grossTonnes)].join('\t'));
+  L.push(['Concrete m3', n3(s.concreteM3)].join('\t'));
+  L.push(['Steel kg per m3', n2(s.steelPerM3), s.steelRatioFlag].join('\t'));
+  if (state.out.warnings.length){
+    L.push('');
+    L.push(['Member','Check','Note'].join('\t'));
+    state.out.warnings.forEach(function(w){
+      L.push([w.memberId||'', w.code, w.text].join('\t'));
+    });
+  }
+  return L.join('\n');
+}
+
+function copyTSV(){
+  var text = tsv();
+  var ta = $('#tsv');
+  ta.value = text;
+  $('#tsvwrap').classList.add('on');
+  var done = function(ok){
+    // the textarea has to be on screen for the execCommand fallback to
+    // select it, so it is shown first and only kept if the copy failed
+    $('#tsvwrap').classList.toggle('on', !ok);
+    $('#barnote').textContent = ok
+      ? 'Schedule copied as TSV — paste into Excel.'
+      : 'Copy blocked by the browser. The TSV is below, select all and copy.';
+  };
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(function(){ done(true); }, function(){ legacy(); });
+      return;
+    }
+  } catch(e){ /* fall through */ }
+  legacy();
+  function legacy(){
+    try {
+      ta.removeAttribute('readonly'); ta.select(); ta.setSelectionRange(0, text.length);
+      var ok = document.execCommand('copy');
+      ta.setAttribute('readonly','readonly');
+      done(ok);
+    } catch(e2){ done(false); }
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* WIRING                                                              */
+/* ------------------------------------------------------------------ */
+function recalc(){
+  state.out = generate(jobFromState());
+  renderReadout(); renderWarnings(); renderSchedule(); renderSummary(); renderTitleBlock();
+  var s = state.out.summary;
+  $('#barnote').textContent = s.marks + ' marks · ' + n2(s.grossKg) + ' kg to order' +
+    (state.out.warnings.length ? ' · ' + state.out.warnings.length + ' check(s) to review' : '');
+  // member cards carry a live weight, so refresh their heads
+  state.out.members.forEach(function(r,i){
+    var el = document.querySelectorAll('#members .mkg')[i];
+    if (el) el.textContent = n2(r.steelKg) + ' kg';
+  });
+}
+function rerender(){ renderMembers(); recalc(); }
+
+function setPath(o, p, v){
+  var ks = p.split('.'), t = o;
+  for (var i=0;i<ks.length-1;i++) t = t[ks[i]];
+  t[ks[ks.length-1]] = v;
+}
+
+var host = $('#members');
+host.addEventListener('input', onEdit);
+host.addEventListener('change', onEdit);
+function onEdit(e){
+  var el = e.target;
+  if (!el.dataset || !el.dataset.p) return;
+  var box = el.closest('[data-mi]');
+  if (!box) return;
+  var m = state.members[+box.dataset.mi];
+  var v = el.dataset.t === 'n' ? (el.value === '' ? '' : +el.value) : el.value;
+  setPath(m, el.dataset.p, v);
+
+  if (el.dataset.struct){
+    if (/_by$/.test(el.dataset.p)){
+      var bi = +el.dataset.p.split('.')[1], b = m.bars[bi];
+      if (b._by === 'count' && (b.count === undefined || b.count === '')) b.count = 1;
+      if (b._by === 'spacing' && (b.spacingMm === undefined || b.spacingMm === '')) b.spacingMm = 150;
+    }
+    rerender(); return;
+  }
+  if (/\.laps$/.test(el.dataset.p)) { rerender(); return; }   // lap type/zone fields appear
+  if (el.dataset.p === 'id'){ renderMembers(); }
+  recalc();
+}
+
+host.addEventListener('click', function(e){
+  var el = e.target.closest('[data-act]');
+  if (!el) return;
+  var act = el.dataset.act, mi = +el.dataset.mi, m = state.members[mi];
+  if (act === 'toggle'){
+    var was = m._open;
+    state.members.forEach(function(x){ x._open = false; });
+    m._open = !was; rerender();
+  } else if (act === 'type'){
+    var keep = m.id;
+    state.members[mi] = newMember(el.dataset.type);
+    state.members[mi].id = keep;
+    state.members[mi]._open = true;
+    rerender();
+  } else if (act === 'addbar'){
+    m.bars.push({ label:'Bar '+(m.bars.length+1), position:'bottom',
+                  along: TYPES[m.type].dirs ? TYPES[m.type].dirs[0][0] : undefined,
+                  dia:12, count:2, _by:'count', end:'continuous', laps:0 });
+    rerender();
+  } else if (act === 'delbar'){
+    m.bars.splice(+el.dataset.bi,1); rerender();
+  } else if (act === 'addstirrup'){
+    m.stirrups = { shape:'STIRRUP_RECT', dia:8, spacingMm:150, legs:2 }; rerender();
+  } else if (act === 'delstirrup'){
+    delete m.stirrups; rerender();
+  } else if (act === 'dup'){
+    var c = JSON.parse(JSON.stringify(m));
+    c.id = nextId(TYPES[m.type].prefix); c._open = false;
+    state.members.splice(mi+1, 0, c); rerender();
+  } else if (act === 'delmember'){
+    state.members.splice(mi,1);
+    if (!state.members.length) state.members.push(newMember('beam'));
+    rerender();
+  } else if (act === 'addmember'){
+    var nm = newMember('beam');
+    state.members.forEach(function(x){ x._open = false; });
+    nm._open = true; state.members.push(nm); rerender();
+    el.scrollIntoView({block:'center'});
+  }
+});
+
+$('#sched').addEventListener('click', function(e){
+  var tr = e.target.closest('tr.row');
+  if (!tr) return;
+  state.open = (state.open === tr.dataset.mark) ? null : tr.dataset.mark;
+  renderSchedule();
+});
+$('#sched').addEventListener('keydown', function(e){
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  var tr = e.target.closest('tr.row');
+  if (!tr) return;
+  e.preventDefault();
+  state.open = (state.open === tr.dataset.mark) ? null : tr.dataset.mark;
+  renderSchedule();
+});
+
+Array.prototype.forEach.call($('#grouptabs').children, function(b){
+  b.addEventListener('click', function(){
+    state.group = b.dataset.g;
+    Array.prototype.forEach.call($('#grouptabs').children, function(x){
+      x.classList.toggle('on', x === b);
+    });
+    renderSchedule();
+  });
+});
+
+['pName','pSet','pDate','pRev'].forEach(function(id){
+  $('#'+id).addEventListener('input', renderTitleBlock);
+});
+$('#btnTsv').addEventListener('click', copyTSV);
+$('#btnPrint').addEventListener('click', function(){ window.print(); });
+
+$('#pDate').value = new Date().toISOString().slice(0,10);
+rerender();
+})();
+</script>
+</body>
+</html>

@@ -103,6 +103,36 @@ test('every inlined module loads in one shared global scope', function () {
     'coverMm:25,stirrupDia:8,barDia:16,fck:25,fy:500}).derivation.capacity'), /124\.0 kNm$/);
 });
 
+test('the site root leads to the viewer, and is static too', function () {
+  /* GitHub Pages serves index.html at the root; bbs.html is the tool. This
+     page is the only thing standing between a visitor and a 404, so it has
+     to keep every rule bbs.html keeps: relative, offline, on palette. */
+  const idx = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+  assert.match(idx, /http-equiv=["']refresh["'][^>]*url=bbs\.html/i,
+    'index.html must send a visitor to bbs.html');
+  assert.match(idx, /<a href="bbs\.html">/,
+    'and carry a plain link for anyone the refresh does not move');
+
+  const external = [];
+  const rx = /(?:src|href)\s*=\s*["']([^"']+)["']/gi;
+  let m;
+  while ((m = rx.exec(idx))) {
+    if (/^(?:https?:)?\/\//i.test(m[1]) || /^\w+:\/\//.test(m[1])) external.push(m[1]);
+  }
+  assert.deepEqual(external, [], 'index.html must reference nothing off the machine');
+  assert.ok(!/\bfetch\s*\(/.test(idx) && !/<script/i.test(idx),
+    'index.html needs no script at all');
+
+  const allowed = ['#14171a', '#f6f7f6', '#b6bcb9', '#e07b1e', '#fff', '#ffffff'];
+  const off = (idx.match(/#[0-9a-f]{3,8}\b/gi) || [])
+    .map(function (c) { return c.toLowerCase(); })
+    .filter(function (c) { return allowed.indexOf(c) < 0; });
+  assert.deepEqual(off, [], 'off-palette colours in index.html: ' + off.join(', '));
+
+  /* Jekyll is off, so Pages serves exactly the files that are committed */
+  assert.ok(fs.existsSync(path.join(ROOT, '.nojekyll')), '.nojekyll is missing');
+});
+
 test('no BS 8666 conformance is claimed anywhere', function () {
   const src = fs.readFileSync(path.join(ROOT, 'src', 'bbs.js'), 'utf8');
   assert.ok(!/BS\s*8666/i.test(src) || /No BS 8666 conformance is claimed/.test(src));

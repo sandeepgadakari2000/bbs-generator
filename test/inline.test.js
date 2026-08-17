@@ -45,7 +45,10 @@ test('bbs.html touches no browser storage API', function () {
 
 test('the viewer uses only the four palette colours', function () {
   // strip the engine block first — it has no colours, but keep the check honest
-  const viewer = html.replace(extract(html), '');
+  const viewer = html
+    .replace(extract(html), '')
+    .replace(/\$\('#[\w-]+'\)/g, '')          // querySelector ids are not colours
+    .replace(/(?:id|for)="[\w-]+"/g, '');     // nor are the ids they point at
   const allowed = ['#14171a', '#f6f7f6', '#b6bcb9', '#e07b1e', '#fff', '#ffffff'];
   const found = (viewer.match(/#[0-9a-f]{3,8}\b/gi) || [])
     .map(function (c) { return c.toLowerCase(); })

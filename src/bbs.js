@@ -877,6 +877,163 @@ function cageFor(member, rows, geom) {
 }
 
 /* ---------------------------------------------------------------------
+   FRAME — a structural grid expanded into a member list and a placed
+   assembly, so the schedule and the building drawn on screen come from
+   the same numbers rather than from two separate guesses.
+
+   Grid spacings are centre to centre. Clear spans are derived by taking
+   out the supporting member, never assumed:
+
+     beam along X : bay spacing − column width
+     beam along Y : bay spacing − column depth
+     slab panel   : bay spacing − beam width, each way
+
+   Identical members are grouped, so twelve 3 m bays come back as one
+   beam mark with a quantity of twelve, not twelve marks.
+
+   World axes match the cage: x along the X bays, y up, z along the Y
+   bays, all in millimetres, origin at the first grid intersection.
+   ------------------------------------------------------------------- */
+function cumulative(bays) {
+  const g = [0];
+  bays.forEach(function (b) { g.push(g[g.length - 1] + b); });
+  return g;
+}
+
+function frame(spec) {
+  const bx = (spec.baysXMm || []).slice(), bz = (spec.baysYMm || []).slice();
+  const gx = cumulative(bx), gz = cumulative(bz);
+  const floors = Math.max(1, spec.floors || 1);
+  const H = spec.floorHeightMm;
+  const col = spec.column, bm = spec.beam, sl = spec.slab, ft = spec.footing;
+  const T = spec.template || {};
+  const members = [], parts = [], notes = [];
+
+  /* ---- every physical instance, before grouping ---- */
+  const place = { footing: [], column: [], beamX: [], beamY: [], slab: [] };
+  for (let i = 0; i < gx.length; i++) {
+    for (let j = 0; j < gz.length; j++) {
+      place.footing.push({ x: gx[i], z: gz[j] });
+      for (let f = 0; f < floors; f++) place.column.push({ x: gx[i], z: gz[j], f: f });
+    }
+  }
+  for (let f = 0; f < floors; f++) {
+    for (let j = 0; j < gz.length; j++)
+      for (let i = 0; i < bx.length; i++)
+        place.beamX.push({ x0: gx[i], x1: gx[i + 1], z: gz[j], f: f, span: bx[i] });
+    for (let i = 0; i < gx.length; i++)
+      for (let j = 0; j < bz.length; j++)
+        place.beamY.push({ z0: gz[j], z1: gz[j + 1], x: gx[i], f: f, span: bz[j] });
+    for (let i = 0; i < bx.length; i++)
+      for (let j = 0; j < bz.length; j++)
+        place.slab.push({ x0: gx[i], x1: gx[i + 1], z0: gz[j], z1: gz[j + 1], f: f,
+                          sx: bx[i], sz: bz[j] });
+  }
+
+  function template(key, member) {
+    const t = T[key];
+    if (!t) { notes.push('No reinforcement template for ' + key + '; ' + member.id +
+                         ' has no bars.'); return member; }
+    if (t.bars) member.bars = clone(t.bars);
+    if (t.stirrups) member.stirrups = clone(t.stirrups);
+    return member;
+  }
+  function add(id, type, quantity, concrete, key) {
+    const m = template(key, {
+      id: id, type: type, quantity: quantity,
+      coverMm: CODE.cover[MEMBERS[type].coverKey],
+      concrete: concrete, frameRole: key
+    });
+    members.push(m);
+    return m;
+  }
+  function box(kind, memberId, x0, y0, z0, x1, y1, z1) {
+    parts.push({ kind: kind, memberId: memberId,
+                 min: [Math.min(x0, x1), Math.min(y0, y1), Math.min(z0, z1)],
+                 max: [Math.max(x0, x1), Math.max(y0, y1), Math.max(z0, z1)] });
+  }
+
+  /* ---- footings: one mark, one per grid intersection ---- */
+  if (place.footing.length) {
+    add('F1', 'footing', place.footing.length,
+        { lengthMm: ft.lengthMm, widthMm: ft.widthMm, depthMm: ft.depthMm }, 'footing');
+    place.footing.forEach(function (p) {
+      box('footing', 'F1', p.x - ft.lengthMm / 2, -ft.depthMm, p.z - ft.widthMm / 2,
+                            p.x + ft.lengthMm / 2, 0, p.z + ft.widthMm / 2);
+    });
+  }
+
+  /* ---- columns: one mark per storey height ---- */
+  if (place.column.length) {
+    add('C1', 'column', place.column.length,
+        { widthMm: col.widthMm, depthMm: col.depthMm, heightMm: H }, 'column');
+    place.column.forEach(function (p) {
+      box('column', 'C1', p.x - col.widthMm / 2, p.f * H, p.z - col.depthMm / 2,
+                          p.x + col.widthMm / 2, (p.f + 1) * H, p.z + col.depthMm / 2);
+    });
+  }
+
+  /* ---- beams, grouped by clear span ---- */
+  function beamGroup(list, prefix, supportMm, alongX) {
+    const spans = list.map(function (p) { return p.span; })
+                      .filter(function (s, i, a) { return a.indexOf(s) === i; })
+                      .sort(function (a, b) { return a - b; });
+    const idFor = {};
+    spans.forEach(function (s, k) {
+      const id = prefix + (k + 1);
+      idFor[s] = id;
+      add(id, 'beam', list.filter(function (p) { return p.span === s; }).length,
+          { widthMm: bm.widthMm, depthMm: bm.depthMm, spanMm: s - supportMm }, 'beam');
+    });
+    list.forEach(function (p) {
+      const level = (p.f + 1) * H, y0 = level - bm.depthMm, y1 = level - sl.thicknessMm;
+      if (alongX) box('beam', idFor[p.span], p.x0, y0, p.z - bm.widthMm / 2,
+                                             p.x1, y1, p.z + bm.widthMm / 2);
+      else        box('beam', idFor[p.span], p.x - bm.widthMm / 2, y0, p.z0,
+                                             p.x + bm.widthMm / 2, y1, p.z1);
+    });
+  }
+  beamGroup(place.beamX, 'BX', col.widthMm, true);
+  beamGroup(place.beamY, 'BY', col.depthMm, false);
+
+  /* ---- slabs, grouped by panel ---- */
+  if (place.slab.length) {
+    const keyOf = function (p) {
+      const a = p.sx - bm.widthMm, b = p.sz - bm.widthMm;
+      return Math.min(a, b) + 'x' + Math.max(a, b);
+    };
+    const keys = place.slab.map(keyOf).filter(function (k, i, a) { return a.indexOf(k) === i; });
+    const idFor = {};
+    keys.forEach(function (k, n) {
+      const id = 'S' + (n + 1), dims = k.split('x').map(Number);
+      idFor[k] = id;
+      add(id, 'slabTwoWay', place.slab.filter(function (p) { return keyOf(p) === k; }).length,
+          { lengthMm: dims[0], widthMm: dims[1], thicknessMm: sl.thicknessMm }, 'slab');
+    });
+    place.slab.forEach(function (p) {
+      const level = (p.f + 1) * H;
+      box('slab', idFor[keyOf(p)], p.x0, level - sl.thicknessMm, p.z0, p.x1, level, p.z1);
+    });
+  }
+
+  const lo = [0, 0, 0], hi = [0, 0, 0];
+  parts.forEach(function (p, i) {
+    for (let k = 0; k < 3; k++) {
+      if (i === 0) { lo[k] = p.min[k]; hi[k] = p.max[k]; }
+      lo[k] = Math.min(lo[k], p.min[k]); hi[k] = Math.max(hi[k], p.max[k]);
+    }
+  });
+
+  return {
+    members: members,
+    grid: { xMm: gx, zMm: gz, floors: floors, floorHeightMm: H,
+            intersections: gx.length * gz.length, panels: bx.length * bz.length },
+    assembly: { parts: parts, bounds: { min: lo, max: hi } },
+    notes: notes
+  };
+}
+
+/* ---------------------------------------------------------------------
    CHECKS — every one surfaces as a warning. Nothing throws, nothing is
    silently corrected, no threshold is bent to keep a job quiet.
    ------------------------------------------------------------------- */
@@ -1173,6 +1330,7 @@ const BBS = {
   CODE: CODE,
   MEMBERS: MEMBERS,
   generate: generate,
+  frame: frame,
   assemble: assemble,
   adoptExternalMembers: adoptExternalMembers,
   helpers: { round: round, fmt: fmt, countFromSpacing: countFromSpacing, shapeOf: shapeOf }

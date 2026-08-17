@@ -8,7 +8,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { CODE, generate, adoptExternalMembers } = require('../src/bbs.js');
+const { CODE, generate, frame, adoptExternalMembers } = require('../src/bbs.js');
 
 /* --- helpers ------------------------------------------------------- */
 function near(actual, expected, tol, what) {
@@ -488,6 +488,143 @@ test('every member type produces a drawable cage', function () {
     c.bars.forEach(function (b) { marks[b.mark] = true; });
     m.rows.forEach(function (r) { assert.ok(marks[r.mark], j.id + ' cage is missing ' + r.mark); });
   });
+});
+
+/* --- the structural frame ------------------------------------------- */
+const TEMPLATE = {
+  footing: { bars: [
+    { label:'Bottom X', along:'length', position:'bottom', dia:16, spacingMm:150, end:'bend' },
+    { label:'Bottom Y', along:'width', position:'bottom', dia:16, spacingMm:150, end:'bend' }] },
+  column: { bars: [{ label:'Vertical', position:'main', dia:20, count:6, end:'continuous',
+                     laps:1, lapType:'compression' }],
+            stirrups: { shape:'STIRRUP_RECT', dia:8, spacingMm:150, legs:2 } },
+  beam: { bars: [{ label:'Bottom main', position:'bottom', dia:16, count:4, end:'hook' },
+                 { label:'Top main', position:'top', dia:12, count:2, end:'hook' }],
+          stirrups: { shape:'STIRRUP_RECT', dia:8, spacingMm:150, legs:2 } },
+  slab: { bars: [{ label:'Short span', along:'length', position:'bottom', dia:10, spacingMm:125, end:'hook' },
+                 { label:'Long span', along:'width', position:'bottom', dia:10, spacingMm:150, end:'hook' }] }
+};
+function frameSpec(over) {
+  return Object.assign({
+    baysXMm: [3000, 3600, 3000], baysYMm: [3600, 3600],
+    floors: 2, floorHeightMm: 3000,
+    column: { widthMm: 300, depthMm: 450 },
+    beam: { widthMm: 230, depthMm: 450 },
+    slab: { thicknessMm: 125 },
+    footing: { lengthMm: 1500, widthMm: 1500, depthMm: 450 },
+    template: TEMPLATE
+  }, over || {});
+}
+
+test('a grid expands to the right number of members', function () {
+  const F = frame(frameSpec());
+  const by = {};
+  F.members.forEach(function (m) { by[m.id] = m; });
+
+  assert.equal(F.grid.intersections, 12, '4 x 3 grid lines');
+  assert.equal(F.grid.panels, 6, '3 x 2 bays');
+  assert.equal(by.F1.quantity, 12, 'one footing per intersection');
+  assert.equal(by.C1.quantity, 24, 'one column per intersection per floor');
+
+  // 3 bays across x 3 grid lines x 2 floors = 18 beams along X, split by span
+  assert.equal(by.BX1.quantity + by.BX2.quantity, 18);
+  // 4 grid lines x 2 bays x 2 floors = 16 beams along Y
+  assert.equal(by.BY1.quantity, 16);
+  // 6 panels x 2 floors = 12 slabs
+  assert.equal(by.S1.quantity + by.S2.quantity, 12);
+  assert.deepEqual(F.notes, [], 'the template covered every member type');
+});
+
+test('clear spans are derived from the grid, not assumed', function () {
+  const by = {};
+  frame(frameSpec()).members.forEach(function (m) { by[m.id] = m; });
+
+  // beam along X: bay spacing less the column width it frames into
+  assert.equal(by.BX1.concrete.spanMm, 3000 - 300);
+  assert.equal(by.BX2.concrete.spanMm, 3600 - 300);
+  // beam along Y: bay spacing less the column depth
+  assert.equal(by.BY1.concrete.spanMm, 3600 - 450);
+  // slab panel: bay spacing less the beam width, each way, short span first
+  assert.equal(by.S1.concrete.lengthMm, 3000 - 230);
+  assert.equal(by.S1.concrete.widthMm, 3600 - 230);
+  assert.equal(by.S2.concrete.lengthMm, 3600 - 230);
+});
+
+test('changing a column size moves the beam clear span with it', function () {
+  const wide = frame(frameSpec({ column: { widthMm: 600, depthMm: 450 } }));
+  const by = {};
+  wide.members.forEach(function (m) { by[m.id] = m; });
+  assert.equal(by.BX1.concrete.spanMm, 3000 - 600, 'clear span follows the column');
+  assert.equal(by.BY1.concrete.spanMm, 3600 - 450, 'the other direction is unaffected');
+});
+
+test('every placed part belongs to a scheduled member', function () {
+  const F = frame(frameSpec());
+  const out = generate({ members: F.members });
+  const ids = {};
+  out.members.forEach(function (m) { ids[m.id] = true; });
+
+  assert.equal(F.assembly.parts.length, 82, 'footings + columns + beams + slabs');
+  F.assembly.parts.forEach(function (p) {
+    assert.ok(ids[p.memberId], 'part references unknown member ' + p.memberId);
+    assert.ok(['footing', 'column', 'beam', 'slab'].includes(p.kind));
+    for (let k = 0; k < 3; k++) {
+      assert.ok(p.max[k] > p.min[k], p.kind + ' part has no extent on axis ' + k);
+      assert.ok(Number.isFinite(p.min[k]) && Number.isFinite(p.max[k]));
+    }
+  });
+
+  // one part per member instance, summed over the marks
+  const perMember = {};
+  F.assembly.parts.forEach(function (p) { perMember[p.memberId] = (perMember[p.memberId] || 0) + 1; });
+  F.members.forEach(function (m) {
+    assert.equal(perMember[m.id], m.quantity, m.id + ' quantity and placed parts disagree');
+  });
+});
+
+test('the frame schedules as a whole building with a sane steel ratio', function () {
+  const F = frame(frameSpec());
+  const out = generate({ members: F.members });
+  assert.ok(out.schedule.length > 0);
+  assert.ok(out.summary.concreteM3 > 40, 'concrete: ' + out.summary.concreteM3);
+  assert.equal(out.summary.steelRatioFlag, 'ok',
+    'whole-frame ratio should land in range, got ' + out.summary.steelPerM3);
+  // and every member still carries its own cage
+  out.members.forEach(function (m) {
+    assert.ok(m.cage && m.cage.bars.length > 0, m.id + ' has no cage');
+  });
+});
+
+test('the assembly stands on its footings and rises by the floor height', function () {
+  const F = frame(frameSpec());
+  const b = F.assembly.bounds;
+  assert.equal(b.min[1], -450, 'the footings sit below datum by their depth');
+  assert.equal(b.max[1], 2 * 3000, '2 floors at 3000');
+  assert.equal(b.min[0], -750, 'the corner footing oversails the grid line by half its length');
+  assert.equal(b.max[0], 9600 + 750);
+});
+
+test('a single-bay single-storey frame still works', function () {
+  const F = frame(frameSpec({ baysXMm: [3000], baysYMm: [3000], floors: 1 }));
+  const by = {};
+  F.members.forEach(function (m) { by[m.id] = m; });
+  assert.equal(by.F1.quantity, 4);
+  assert.equal(by.C1.quantity, 4);
+  assert.equal(by.BX1.quantity, 2);
+  assert.equal(by.BY1.quantity, 2);
+  assert.equal(by.S1.quantity, 1);
+  assert.ok(generate({ members: F.members }).schedule.length > 0);
+});
+
+test('a missing reinforcement template is reported, not thrown', function () {
+  const F = frame(frameSpec({ template: { column: TEMPLATE.column } }));
+  assert.ok(F.notes.length > 0, 'the gap must be surfaced');
+  assert.ok(F.notes.some(function (n) { return /footing/.test(n); }));
+  // the members still exist with their concrete, they just carry no bars
+  const by = {};
+  F.members.forEach(function (m) { by[m.id] = m; });
+  assert.equal(by.F1.bars, undefined);
+  assert.ok(by.C1.bars.length > 0);
 });
 
 /* --- constants really do come from CODE ----------------------------- */

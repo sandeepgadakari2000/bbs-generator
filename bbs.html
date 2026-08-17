@@ -232,13 +232,37 @@
 
 <div id="readout"></div>
 
+<div class="sec" id="framesec">
+  <div class="sechead"><h2>Structural grid</h2><i></i><u id="framenote"></u></div>
+  <div class="strip" id="framestrip">
+    <div class="field"><label>Bays across X</label><input id="fBX" type="number" min="1" step="1" value="3" inputmode="numeric"></div>
+    <div class="field"><label>Bay X mm</label><input id="fSX" type="number" step="100" value="3000" inputmode="decimal"></div>
+    <div class="field"><label>Bays along Y</label><input id="fBY" type="number" min="1" step="1" value="2" inputmode="numeric"></div>
+    <div class="field"><label>Bay Y mm</label><input id="fSY" type="number" step="100" value="3600" inputmode="decimal"></div>
+    <div class="field"><label>Floors</label><input id="fFL" type="number" min="1" step="1" value="2" inputmode="numeric"></div>
+    <div class="field"><label>Floor height mm</label><input id="fFH" type="number" step="100" value="3000" inputmode="decimal"></div>
+    <div class="field"><label>Column w × d</label><input id="fColW" type="number" step="25" value="300" inputmode="decimal"></div>
+    <div class="field"><label>Column depth mm</label><input id="fColD" type="number" step="25" value="450" inputmode="decimal"></div>
+    <div class="field"><label>Beam width mm</label><input id="fBmW" type="number" step="25" value="230" inputmode="decimal"></div>
+    <div class="field"><label>Beam depth mm</label><input id="fBmD" type="number" step="25" value="450" inputmode="decimal"></div>
+    <div class="field"><label>Slab mm</label><input id="fSlab" type="number" step="5" value="125" inputmode="decimal"></div>
+    <div class="field"><label>Footing L × W</label><input id="fFtA" type="number" step="50" value="1500" inputmode="decimal"></div>
+    <div class="field"><label>Footing depth mm</label><input id="fFtD" type="number" step="25" value="450" inputmode="decimal"></div>
+  </div>
+  <button class="addm" id="btnFrame">Build the frame — replaces the member list</button>
+</div>
+
 <div class="sec" id="memhead">
   <div class="sechead"><h2>Members</h2><i></i><u id="memcount"></u></div>
   <div id="members"></div>
 </div>
 
 <div class="sec" id="cagesec">
-  <div class="sechead"><h2>Cage</h2><i></i><u id="cagehint">drag to orbit · scroll to zoom</u></div>
+  <div class="sechead"><h2>Model</h2><i></i><u id="cagehint">drag to orbit · scroll to zoom</u></div>
+  <div class="tabs noprint" id="cagemode">
+    <button data-m="building" class="on">Building</button>
+    <button data-m="member">Member cage</button>
+  </div>
   <div class="tabs noprint" id="cagemembers"></div>
   <div class="tabs noprint" id="cageviews">
     <button data-v="iso" class="on">Iso</button>
@@ -1172,6 +1196,163 @@ function cageFor(member, rows, geom) {
 }
 
 /* ---------------------------------------------------------------------
+   FRAME — a structural grid expanded into a member list and a placed
+   assembly, so the schedule and the building drawn on screen come from
+   the same numbers rather than from two separate guesses.
+
+   Grid spacings are centre to centre. Clear spans are derived by taking
+   out the supporting member, never assumed:
+
+     beam along X : bay spacing − column width
+     beam along Y : bay spacing − column depth
+     slab panel   : bay spacing − beam width, each way
+
+   Identical members are grouped, so twelve 3 m bays come back as one
+   beam mark with a quantity of twelve, not twelve marks.
+
+   World axes match the cage: x along the X bays, y up, z along the Y
+   bays, all in millimetres, origin at the first grid intersection.
+   ------------------------------------------------------------------- */
+function cumulative(bays) {
+  const g = [0];
+  bays.forEach(function (b) { g.push(g[g.length - 1] + b); });
+  return g;
+}
+
+function frame(spec) {
+  const bx = (spec.baysXMm || []).slice(), bz = (spec.baysYMm || []).slice();
+  const gx = cumulative(bx), gz = cumulative(bz);
+  const floors = Math.max(1, spec.floors || 1);
+  const H = spec.floorHeightMm;
+  const col = spec.column, bm = spec.beam, sl = spec.slab, ft = spec.footing;
+  const T = spec.template || {};
+  const members = [], parts = [], notes = [];
+
+  /* ---- every physical instance, before grouping ---- */
+  const place = { footing: [], column: [], beamX: [], beamY: [], slab: [] };
+  for (let i = 0; i < gx.length; i++) {
+    for (let j = 0; j < gz.length; j++) {
+      place.footing.push({ x: gx[i], z: gz[j] });
+      for (let f = 0; f < floors; f++) place.column.push({ x: gx[i], z: gz[j], f: f });
+    }
+  }
+  for (let f = 0; f < floors; f++) {
+    for (let j = 0; j < gz.length; j++)
+      for (let i = 0; i < bx.length; i++)
+        place.beamX.push({ x0: gx[i], x1: gx[i + 1], z: gz[j], f: f, span: bx[i] });
+    for (let i = 0; i < gx.length; i++)
+      for (let j = 0; j < bz.length; j++)
+        place.beamY.push({ z0: gz[j], z1: gz[j + 1], x: gx[i], f: f, span: bz[j] });
+    for (let i = 0; i < bx.length; i++)
+      for (let j = 0; j < bz.length; j++)
+        place.slab.push({ x0: gx[i], x1: gx[i + 1], z0: gz[j], z1: gz[j + 1], f: f,
+                          sx: bx[i], sz: bz[j] });
+  }
+
+  function template(key, member) {
+    const t = T[key];
+    if (!t) { notes.push('No reinforcement template for ' + key + '; ' + member.id +
+                         ' has no bars.'); return member; }
+    if (t.bars) member.bars = clone(t.bars);
+    if (t.stirrups) member.stirrups = clone(t.stirrups);
+    return member;
+  }
+  function add(id, type, quantity, concrete, key) {
+    const m = template(key, {
+      id: id, type: type, quantity: quantity,
+      coverMm: CODE.cover[MEMBERS[type].coverKey],
+      concrete: concrete, frameRole: key
+    });
+    members.push(m);
+    return m;
+  }
+  function box(kind, memberId, x0, y0, z0, x1, y1, z1) {
+    parts.push({ kind: kind, memberId: memberId,
+                 min: [Math.min(x0, x1), Math.min(y0, y1), Math.min(z0, z1)],
+                 max: [Math.max(x0, x1), Math.max(y0, y1), Math.max(z0, z1)] });
+  }
+
+  /* ---- footings: one mark, one per grid intersection ---- */
+  if (place.footing.length) {
+    add('F1', 'footing', place.footing.length,
+        { lengthMm: ft.lengthMm, widthMm: ft.widthMm, depthMm: ft.depthMm }, 'footing');
+    place.footing.forEach(function (p) {
+      box('footing', 'F1', p.x - ft.lengthMm / 2, -ft.depthMm, p.z - ft.widthMm / 2,
+                            p.x + ft.lengthMm / 2, 0, p.z + ft.widthMm / 2);
+    });
+  }
+
+  /* ---- columns: one mark per storey height ---- */
+  if (place.column.length) {
+    add('C1', 'column', place.column.length,
+        { widthMm: col.widthMm, depthMm: col.depthMm, heightMm: H }, 'column');
+    place.column.forEach(function (p) {
+      box('column', 'C1', p.x - col.widthMm / 2, p.f * H, p.z - col.depthMm / 2,
+                          p.x + col.widthMm / 2, (p.f + 1) * H, p.z + col.depthMm / 2);
+    });
+  }
+
+  /* ---- beams, grouped by clear span ---- */
+  function beamGroup(list, prefix, supportMm, alongX) {
+    const spans = list.map(function (p) { return p.span; })
+                      .filter(function (s, i, a) { return a.indexOf(s) === i; })
+                      .sort(function (a, b) { return a - b; });
+    const idFor = {};
+    spans.forEach(function (s, k) {
+      const id = prefix + (k + 1);
+      idFor[s] = id;
+      add(id, 'beam', list.filter(function (p) { return p.span === s; }).length,
+          { widthMm: bm.widthMm, depthMm: bm.depthMm, spanMm: s - supportMm }, 'beam');
+    });
+    list.forEach(function (p) {
+      const level = (p.f + 1) * H, y0 = level - bm.depthMm, y1 = level - sl.thicknessMm;
+      if (alongX) box('beam', idFor[p.span], p.x0, y0, p.z - bm.widthMm / 2,
+                                             p.x1, y1, p.z + bm.widthMm / 2);
+      else        box('beam', idFor[p.span], p.x - bm.widthMm / 2, y0, p.z0,
+                                             p.x + bm.widthMm / 2, y1, p.z1);
+    });
+  }
+  beamGroup(place.beamX, 'BX', col.widthMm, true);
+  beamGroup(place.beamY, 'BY', col.depthMm, false);
+
+  /* ---- slabs, grouped by panel ---- */
+  if (place.slab.length) {
+    const keyOf = function (p) {
+      const a = p.sx - bm.widthMm, b = p.sz - bm.widthMm;
+      return Math.min(a, b) + 'x' + Math.max(a, b);
+    };
+    const keys = place.slab.map(keyOf).filter(function (k, i, a) { return a.indexOf(k) === i; });
+    const idFor = {};
+    keys.forEach(function (k, n) {
+      const id = 'S' + (n + 1), dims = k.split('x').map(Number);
+      idFor[k] = id;
+      add(id, 'slabTwoWay', place.slab.filter(function (p) { return keyOf(p) === k; }).length,
+          { lengthMm: dims[0], widthMm: dims[1], thicknessMm: sl.thicknessMm }, 'slab');
+    });
+    place.slab.forEach(function (p) {
+      const level = (p.f + 1) * H;
+      box('slab', idFor[keyOf(p)], p.x0, level - sl.thicknessMm, p.z0, p.x1, level, p.z1);
+    });
+  }
+
+  const lo = [0, 0, 0], hi = [0, 0, 0];
+  parts.forEach(function (p, i) {
+    for (let k = 0; k < 3; k++) {
+      if (i === 0) { lo[k] = p.min[k]; hi[k] = p.max[k]; }
+      lo[k] = Math.min(lo[k], p.min[k]); hi[k] = Math.max(hi[k], p.max[k]);
+    }
+  });
+
+  return {
+    members: members,
+    grid: { xMm: gx, zMm: gz, floors: floors, floorHeightMm: H,
+            intersections: gx.length * gz.length, panels: bx.length * bz.length },
+    assembly: { parts: parts, bounds: { min: lo, max: hi } },
+    notes: notes
+  };
+}
+
+/* ---------------------------------------------------------------------
    CHECKS — every one surfaces as a warning. Nothing throws, nothing is
    silently corrected, no threshold is bent to keep a job quiet.
    ------------------------------------------------------------------- */
@@ -1468,6 +1649,7 @@ const BBS = {
   CODE: CODE,
   MEMBERS: MEMBERS,
   generate: generate,
+  frame: frame,
   assemble: assemble,
   adoptExternalMembers: adoptExternalMembers,
   helpers: { round: round, fmt: fmt, countFromSpacing: countFromSpacing, shapeOf: shapeOf }
@@ -1558,7 +1740,8 @@ function nextId(prefix){
 /* ------------------------------------------------------------------ */
 /* STATE — in memory only. No storage APIs anywhere in this file.      */
 /* ------------------------------------------------------------------ */
-var state = { members: [], group:'member', open:null, out:null };
+var state = { members: [], group:'member', open:null, out:null,
+              frame:null, assembly:null, frameSig:null };
 state.members = [ newMember('beam') ];
 
 /* Strip the viewer's own bookkeeping before handing the job to the
@@ -1773,7 +1956,9 @@ function shapeSVG(row, full){
 /* The engine supplies the geometry; nothing here computes a length.   */
 /* ------------------------------------------------------------------ */
 var CG = { theta:-0.72, phi:1.04, radius:1, zoom:1, target:[0,0,0],
-           view:'iso', ortho:false, member:0, concrete:true, w:0, h:0 };
+           view:'iso', ortho:false, member:0, concrete:true, w:0, h:0,
+           mode:'building' };
+var LIGHT = [0.42, 0.78, 0.46];   // fixed sun, so shading reads consistently
 
 function sub(a,b){ return [a[0]-b[0],a[1]-b[1],a[2]-b[2]]; }
 function dot(a,b){ return a[0]*b[0]+a[1]*b[1]+a[2]*b[2]; }
@@ -1791,9 +1976,17 @@ function cageOf(){
   return state.out.members[CG.member];
 }
 
+/* whichever model is on screen supplies the bounds the camera frames */
+function activeBounds(){
+  if (CG.mode === 'building')
+    return state.assembly ? state.assembly.bounds : null;
+  var m = cageOf();
+  return (m && m.cage) ? m.cage.bounds : null;
+}
+
 function cageFrame(){
-  var m = cageOf(); if (!m || !m.cage) return;
-  var lo = m.cage.bounds.min, hi = m.cage.bounds.max;
+  var b = activeBounds(); if (!b) return;
+  var lo = b.min, hi = b.max;
   CG.target = [(lo[0]+hi[0])/2,(lo[1]+hi[1])/2,(lo[2]+hi[2])/2];
   CG.span = Math.max(hi[0]-lo[0], hi[1]-lo[1], hi[2]-lo[2], 1);
   CG.radius = CG.span * 1.85;
@@ -1812,8 +2005,8 @@ function camBasis(){
 /* fit the concrete's eight corners to the frame — used for the
    orthographic elevation, section and plan */
 function fitScale(B){
-  var m=cageOf(); if(!m) return 1;
-  var lo=m.cage.bounds.min, hi=m.cage.bounds.max, ex=0, ey=0;
+  var b=activeBounds(); if(!b) return 1;
+  var lo=b.min, hi=b.max, ex=0, ey=0;
   for (var i=0;i<8;i++){
     var d=sub([(i&1)?hi[0]:lo[0], (i&2)?hi[1]:lo[1], (i&4)?hi[2]:lo[2]], B.eye);
     ex=Math.max(ex,Math.abs(dot(d,B.r))); ey=Math.max(ey,Math.abs(dot(d,B.u)));
@@ -1851,9 +2044,104 @@ function cageSize(){
   CG.ctx.setTransform(dpr,0,0,dpr,0,0);
 }
 
+/* a datum grid, so an orbit has something to read the model against */
+function groundGrid(B, P, bounds, atY){
+  if (CG.ortho) return;
+  var ctx=CG.ctx, lo=bounds.min, hi=bounds.max, pad=CG.span*0.28, steps=6;
+  ctx.strokeStyle='rgba(182,188,185,.55)'; ctx.lineWidth=1;
+  function seg(a,b){
+    if(!a||!b) return;
+    ctx.beginPath(); ctx.moveTo(a[0],a[1]); ctx.lineTo(b[0],b[1]); ctx.stroke();
+  }
+  for (var g=0; g<=steps; g++){
+    var fx=lo[0]-pad+(hi[0]-lo[0]+pad*2)*g/steps;
+    var fz=lo[2]-pad+(hi[2]-lo[2]+pad*2)*g/steps;
+    seg(P([fx,atY,lo[2]-pad]), P([fx,atY,hi[2]+pad]));
+    seg(P([lo[0]-pad,atY,fz]), P([hi[0]+pad,atY,fz]));
+  }
+}
+
+/* ---- building: the placed assembly as shaded concrete solids -------- */
+function boxFaces(min, max){
+  var x0=min[0],y0=min[1],z0=min[2], x1=max[0],y1=max[1],z1=max[2];
+  return [
+    { n:[0,0,-1], v:[[x0,y0,z0],[x0,y1,z0],[x1,y1,z0],[x1,y0,z0]] },
+    { n:[0,0, 1], v:[[x1,y0,z1],[x1,y1,z1],[x0,y1,z1],[x0,y0,z1]] },
+    { n:[-1,0,0], v:[[x0,y0,z1],[x0,y1,z1],[x0,y1,z0],[x0,y0,z0]] },
+    { n:[ 1,0,0], v:[[x1,y0,z0],[x1,y1,z0],[x1,y1,z1],[x1,y0,z1]] },
+    { n:[0,-1,0], v:[[x0,y0,z0],[x1,y0,z0],[x1,y0,z1],[x0,y0,z1]] },
+    { n:[0, 1,0], v:[[x0,y1,z1],[x1,y1,z1],[x1,y1,z0],[x0,y1,z0]] }
+  ];
+}
+
+function buildingDraw(B, P){
+  var A=state.assembly, ctx=CG.ctx;
+  if (!A){
+    ctx.fillStyle='rgba(20,23,26,.45)';
+    ctx.font='500 11px ui-monospace,Menlo,Consolas,monospace';
+    ctx.textAlign='center';
+    ctx.fillText('Set the structural grid above, then Build the frame.', CG.w/2, CG.h/2);
+    ctx.textAlign='left';
+    return;
+  }
+  var hotMember = null;
+  if (state.open){
+    var r = state.out.schedule.filter(function(x){ return x.mark===state.open; })[0];
+    if (r) hotMember = r.memberId;
+  }
+
+  var faces=[];
+  A.parts.forEach(function(p){
+    var hot = hotMember && p.memberId === hotMember;
+    boxFaces(p.min, p.max).forEach(function(f){
+      var cen=mid(f.v);
+      if (dot(f.n, sub(B.eye, cen)) <= 0) return;        // back face, cull it
+      var pts=f.v.map(P);
+      if (pts.some(function(q){ return !q; })) return;
+      var lum = 0.4 + 0.6*Math.max(0, dot(f.n, LIGHT));
+      faces.push({ pts:pts, z:(pts[0][2]+pts[2][2])/2, lum:lum, hot:hot });
+    });
+  });
+  faces.sort(function(a,b){ return b.z-a.z; });
+
+  var dim = hotMember ? 0.45 : 1;
+  faces.forEach(function(f){
+    var a = (1-f.lum)*0.5 + 0.06;
+    ctx.fillStyle = f.hot ? 'rgba(224,123,30,'+(0.3+(1-f.lum)*0.55)+')'
+                          : 'rgba(20,23,26,'+(a*dim)+')';
+    ctx.strokeStyle = f.hot ? 'rgba(224,123,30,.85)' : 'rgba(20,23,26,'+(0.3*dim)+')';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(f.pts[0][0], f.pts[0][1]);
+    for (var i=1;i<f.pts.length;i++) ctx.lineTo(f.pts[i][0], f.pts[i][1]);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+  });
+
+  /* overlays */
+  var g = state.frame || {};
+  $('#cagenote').textContent =
+    (g.baysX||'?') + ' × ' + (g.baysY||'?') + ' bays · ' + (g.floors||'?') + ' floors · ' +
+    A.parts.length + ' members placed · ' +
+    Math.round(A.bounds.max[0]-A.bounds.min[0]) + ' × ' +
+    Math.round(A.bounds.max[1]-A.bounds.min[1]) + ' × ' +
+    Math.round(A.bounds.max[2]-A.bounds.min[2]) + ' mm · ' + CG.view;
+  $('#cagekey').innerHTML = hotMember
+    ? '<b>' + esc(hotMember) + '</b> highlighted<br>' + esc(state.open) + '<br>tap the row again to clear'
+    : 'Concrete frame<br><b>Tap a schedule row</b><br>to pick a member out';
+}
+
 function cageDraw(){
+  if (!CG.ctx) return;
+  if (CG.mode === 'building'){
+    var ctxB=CG.ctx;
+    ctxB.clearRect(0,0,CG.w,CG.h);
+    ctxB.fillStyle='#fff'; ctxB.fillRect(0,0,CG.w,CG.h);
+    var BB=camBasis(), sB=CG.ortho?fitScale(BB):0;
+    if (state.assembly) groundGrid(BB, makeProject(BB,sB), state.assembly.bounds, 0);
+    buildingDraw(BB, makeProject(BB,sB));
+    return;
+  }
   var m=cageOf();
-  if (!CG.ctx || !m || !m.cage){ return; }
+  if (!m || !m.cage){ return; }
   var c=m.cage, ctx=CG.ctx, W=CG.w, H=CG.h;
   ctx.clearRect(0,0,W,H);
   ctx.fillStyle='#fff'; ctx.fillRect(0,0,W,H);
@@ -1861,18 +2149,7 @@ function cageDraw(){
   var B=camBasis(), scale=CG.ortho?fitScale(B):0, P=makeProject(B,scale);
   var centroid=mid(c.solid.verts);
 
-  /* ---- ground grid, so an orbit has something to read against ---- */
-  if (!CG.ortho){
-    var lo=c.bounds.min, hi=c.bounds.max, pad=CG.span*0.28, y=lo[1];
-    ctx.strokeStyle='rgba(182,188,185,.55)'; ctx.lineWidth=1;
-    var steps=6;
-    for (var g=0; g<=steps; g++){
-      var fx=lo[0]-pad+(hi[0]-lo[0]+pad*2)*g/steps;
-      var fz=lo[2]-pad+(hi[2]-lo[2]+pad*2)*g/steps;
-      seg(P([fx,y,lo[2]-pad]), P([fx,y,hi[2]+pad]));
-      seg(P([lo[0]-pad,y,fz]), P([hi[0]+pad,y,fz]));
-    }
-  }
+  groundGrid(B, P, c.bounds, c.bounds.min[1]);
   function seg(a,b){
     if(!a||!b) return;
     ctx.beginPath(); ctx.moveTo(a[0],a[1]); ctx.lineTo(b[0],b[1]); ctx.stroke();
@@ -1948,6 +2225,7 @@ function cageDraw(){
 
 function renderCageTabs(){
   if (!state.out) return;
+  $('#cagemembers').style.display = (CG.mode==='member') ? '' : 'none';
   $('#cagemembers').innerHTML = state.out.members.map(function(m,i){
     return '<button data-m="'+i+'"'+(i===CG.member?' class="on"':'')+'>'+esc(m.id)+'</button>';
   }).join('');
@@ -2003,6 +2281,14 @@ function cageInit(){
   $('#cagemembers').addEventListener('click', function(e){
     var b=e.target.closest('button'); if(!b) return;
     CG.member = +b.dataset.m; renderCageTabs(); cageFrame(); cageDraw();
+  });
+  $('#cagemode').addEventListener('click', function(e){
+    var b=e.target.closest('button'); if(!b) return;
+    CG.mode = b.dataset.m;
+    Array.prototype.forEach.call($('#cagemode').children, function(x){
+      x.classList.toggle('on', x===b);
+    });
+    renderCageTabs(); cageFrame(); cageDraw();
   });
 
   window.addEventListener('resize', function(){ cageSize(); cageDraw(); });
@@ -2366,6 +2652,10 @@ function recalc(){
   var nowMember = (state.out.members[CG.member]||{}).id;
   if (nowMember !== wasMember) cageFrame();
   cageDraw();
+  if (state.frame) $('#framenote').textContent = frameStale()
+    ? 'member list edited by hand — rebuild to move the model'
+    : (state.frame.baysX + ' × ' + state.frame.baysY + ' bays · ' +
+       state.frame.floors + ' floors · model in step');
   var s = state.out.summary;
   $('#barnote').textContent = s.marks + ' marks · ' + n2(s.grossKg) + ' kg to order' +
     (state.out.warnings.length ? ' · ' + state.out.warnings.length + ' check(s) to review' : '');
@@ -2482,10 +2772,80 @@ Array.prototype.forEach.call($('#grouptabs').children, function(b){
 $('#btnTsv').addEventListener('click', copyTSV);
 $('#btnPrint').addEventListener('click', function(){ window.print(); });
 
+/* ------------------------------------------------------------------ */
+/* STRUCTURAL GRID                                                     */
+/* The engine expands the grid into members AND into a placed assembly, */
+/* so the schedule and the building on screen are the same numbers.     */
+/* ------------------------------------------------------------------ */
+function repeat(n, v){ var a=[]; for (var i=0;i<n;i++) a.push(v); return a; }
+
+function buildFrame(){
+  var g = {
+    baysX: Math.max(1, +$('#fBX').value||1), spanX: +$('#fSX').value||3000,
+    baysY: Math.max(1, +$('#fBY').value||1), spanY: +$('#fSY').value||3000,
+    floors: Math.max(1, +$('#fFL').value||1), height: +$('#fFH').value||3000
+  };
+  var F = BBS.frame({
+    baysXMm: repeat(g.baysX, g.spanX),
+    baysYMm: repeat(g.baysY, g.spanY),
+    floors: g.floors,
+    floorHeightMm: g.height,
+    column: { widthMm: +$('#fColW').value||300, depthMm: +$('#fColD').value||450 },
+    beam:   { widthMm: +$('#fBmW').value||230, depthMm: +$('#fBmD').value||450 },
+    slab:   { thicknessMm: +$('#fSlab').value||125 },
+    footing:{ lengthMm: +$('#fFtA').value||1500, widthMm: +$('#fFtA').value||1500,
+              depthMm: +$('#fFtD').value||450 },
+    // the same defaults the member form uses, so nothing is detailed twice
+    template: {
+      footing: { bars: TYPES.footing.bars },
+      column:  { bars: TYPES.column.bars,  stirrups: TYPES.column.stirrups },
+      beam:    { bars: TYPES.beam.bars.concat([
+                   { label:'Top main', position:'top', dia:12, count:2, end:'hook' }]),
+                 stirrups: TYPES.beam.stirrups },
+      slab:    { bars: TYPES.slabTwoWay.bars }
+    }
+  });
+
+  // the member editor drives count-or-spacing from _by; frame bars have neither
+  F.members.forEach(function(m){
+    (m.bars||[]).forEach(function(b){
+      b._by = (b.count !== undefined) ? 'count' : 'spacing';
+    });
+  });
+
+  state.frame = g;
+  state.members = F.members;
+  state.assembly = F.assembly;
+  state.frameSig = frameSignature(F.members);
+  state.open = null;
+  CG.member = 0; CG.mode = 'building';
+  Array.prototype.forEach.call($('#cagemode').children, function(x){
+    x.classList.toggle('on', x.dataset.m === 'building');
+  });
+  rerender();
+  cageFrame(); cageDraw();
+  $('#framenote').textContent = F.grid.intersections + ' columns · ' + F.grid.panels +
+    ' panels per floor · ' + F.assembly.parts.length + ' members placed' +
+    (F.notes.length ? ' · ' + F.notes.length + ' template gap(s)' : '');
+  $('#cagesec').scrollIntoView({ block:'start' });
+}
+
+/* the placed model is only true for the members the grid produced; say so
+   plainly once the list has been edited by hand */
+function frameSignature(members){
+  return members.map(function(m){
+    return m.id + ':' + m.type + ':' + m.quantity + ':' + JSON.stringify(m.concrete);
+  }).join('|');
+}
+function frameStale(){
+  return !!state.assembly && state.frameSig &&
+         frameSignature(state.members) !== state.frameSig;
+}
+
 /* opening a schedule row highlights that mark in the cage, switching the
    cage to that row's member if it is showing a different one */
 function syncCageToOpenMark(){
-  if (state.open){
+  if (state.open && CG.mode === 'member'){
     var i = state.out.members.findIndex(function(m){
       return m.rows.some(function(r){ return r.mark === state.open; });
     });
@@ -2494,9 +2854,11 @@ function syncCageToOpenMark(){
   cageDraw();
 }
 
+$('#btnFrame').addEventListener('click', buildFrame);
+
 $('#pDate').value = new Date().toISOString().slice(0,10);
 cageInit();
-rerender();
+buildFrame();               // a whole building on first load, not an empty canvas
 setView('iso');
 })();
 </script>

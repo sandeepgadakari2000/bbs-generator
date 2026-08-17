@@ -8,6 +8,7 @@ src/bbs.js       the detailing engine — bar lengths, schedules, cage, frame
 src/scheme.js    the planner — four partitions of a frame, plus its exterior
 src/plan.js      the plan reader — PDF in, reviewable parameters out
 src/loads.js     the load engine — loads, the load path, IS 456 Table 18
+src/design.js    the design engine — flexure, shear, bond, design forces
 test/            node --test
 test/fixtures/   PDFs built by test/make-fixtures.py, expected values known
 bbs.html         the viewer, both pages — one file, opens from the filesystem
@@ -120,6 +121,75 @@ They are recorded here because each moves a number.
 | Beam end reactions | Half the line load to each end — exact statics for the symmetric tributary shapes here, **not** a continuity factor. No redistribution happens; `notes` says so on every result. |
 | Imposed-load reduction on columns | Not applied. IS 875 Part 2 cl 3.2 permits one on a column carrying several floors; assuming it is unconservative, so the full imposed load is carried down. |
 | Superimposed dead load | Floor finish 1.0 kN/m² is the only default, and it reports itself on `assumptions` as an assumption rather than a code value. False ceiling and services are opt-in. Roof imposed load is **not** in `LOAD.liveKNPerM2` and must be given per floor. |
+
+## Beam design — flexure and shear
+
+`src/design.js` is the half that answers "is it enough". Give it a section and a
+demand and it returns **demand, capacity and the ratio** — never a bare verdict.
+
+```js
+flexureDesign({ MuKNm, widthMm, overallDepthMm, coverMm, stirrupDia, barDia, fck, fy })
+→ { astRequiredMm2, astMinMm2, astMaxMm2, astGoverningMm2, governedBy, derivation }
+
+flexureCapacity({ astMm2, … })
+→ { muCapKNm, xuMm, xuMaxMm, underReinforced, derivation, notes }
+
+shearDesign({ VuKN, astMm2, …, stirrup: { dia, legs, spacingMm } })
+→ { tauVNPerMm2, tauCNPerMm2, requiredAsvPerSv, spacingCapMm, stirrup: { check } }
+
+beamCheck({ spanMm, wKNPerM, astMm2, … })
+→ { checks: [{ statement, demand, capacity, ratio, provision, derivation }], steel }
+```
+
+The acceptance section is the same 300 × 450 beam the schedule tests use:
+
+```
+d      = 450 − 25 cover − 8 stirrup − 8 (half of 16)   = 409 mm
+Mu     = 30 × 4.0² / 8                                 = 60.0 kNm
+Mu,lim = 0.133 × 25 × 300 × 409²                       = 166.9 kNm → singly
+Ast    from 60e6 = 435·Ast·(409 − 0.0677·Ast)          = 358.5 mm²
+xu     = 0.87 × 500 × 804.2 / (0.36 × 25 × 300)        = 129.6 mm  < 188.1
+Mu,cap = 435 × 804.2 × (409 − 0.42 × 129.6)            = 124.0 kNm
+```
+
+which the tool reports as `Mu 60.0 kNm / Mu,cap 124.0 kNm = 0.48`, marked
+**over-provided** rather than passed. Over-provision is information: 4-T16 against
+a 60 kNm demand is 2.24× the steel the moment needs, and the tool says so.
+
+Every constant lives in `IS456` with its clause number, read at call time, proven
+by a mutation test on seventeen of them.
+
+### Design forces without a solver
+
+`continuousBeamForces()` implements the cl 22.5 Tables 12 and 13 coefficients —
+and **checks cl 22.5.1's preconditions first**. Fewer than three spans, spans
+differing by more than 15% of the longest, a load the caller says is not uniform,
+a section the caller says is not uniform: each is refused with the number that
+failed, because the coefficients are not a fallback for a run they were not
+written for. `simpleSpanForces()` is `wl²/8` and `wl/2`.
+
+### What it refuses
+
+| Refused | Why |
+|---|---|
+| `Mu > Mu,lim` | Needs compression steel, and sizing it needs `fsc` from IS 456 Fig 23 or SP-16 Table F plus `0.67fck/γm`. Neither is in `IS456`, so neither is guessed. Doubly reinforced sections are **not implemented**. |
+| `τv > τc,max` | Table 20's ceiling. No stirrup arrangement is permitted, so none is detailed — the section has to grow. |
+| An untabulated concrete grade for `τc` | Table 19 covers M15–M40 and gives no rule for interpolating *between grades*, so none is invented. |
+| An untabulated steel grade | `xu,max/d` and the `Mu,lim` factor are both grade-specific. |
+| cl 22.5.1's preconditions failing | See above. |
+
+Things that are **flagged and used**, never clamped: a stirrup spacing over the
+cl 26.5.1.5 cap, steel over `0.04bD`, steel under `0.85bd/fy`, and `xu > xu,max`
+— which reports the capacity as `Mu,lim` and says plainly that the extra tension
+steel does nothing and the section needs deepening.
+
+### Citations
+
+Every constant cites its IS 456 clause. A cross-check against a published worked
+example — SP-16, Pillai & Menon, Krishna Raju — is **still outstanding**, and no
+page number is written in the tests because none has been verified. The two values
+that most want it are flagged at the head of `test/design.test.js`: the Table 19
+interpolation and the Fe500 `Mu,lim` factor.
 
 ## Architectural schemes (page 1)
 

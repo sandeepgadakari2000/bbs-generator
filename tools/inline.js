@@ -26,7 +26,10 @@ const MODULES = [
     end: '/* SCHEME:END */' },
   { src: 'src/loads.js',
     begin: '/* LOADS:BEGIN — generated from src/loads.js by tools/inline.js. Do not edit here. */',
-    end: '/* LOADS:END */' }
+    end: '/* LOADS:END */' },
+  { src: 'src/design.js',
+    begin: '/* DESIGN:BEGIN — generated from src/design.js by tools/inline.js. Do not edit here. */',
+    end: '/* DESIGN:END */' }
 ];
 
 const BEGIN = MODULES[0].begin;

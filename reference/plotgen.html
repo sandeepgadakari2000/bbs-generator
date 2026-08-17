@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PlotGen — plot size in, dimensioned schemes out</title>
+<style>
+  :root{
+    --ink:#14171a; --sheet:#e8eae8; --paper:#f6f7f6; --rule:#b6bcb9;
+    --accent:#e07b1e; --steel:#5d666d; --warn:#c0392b; --ok:#3f7d46;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;background:var(--sheet);color:var(--ink);
+    font-family:"Helvetica Neue",Helvetica,Arial,sans-serif}
+  body{padding-bottom:56px}
+
+  header{padding:18px 16px 12px;border-bottom:1px solid var(--rule)}
+  .eyebrow{font:500 10px/1 var(--mono);letter-spacing:.22em;text-transform:uppercase;color:var(--steel)}
+  h1{margin:8px 0 0;font-size:clamp(21px,6vw,32px);letter-spacing:-.02em}
+  h1 em{font-style:normal;color:var(--accent)}
+  header p{margin:6px 0 0;font:400 11.5px/1.5 var(--mono);color:var(--steel);max-width:60ch}
+
+  /* ---------- input strip ---------- */
+  #inputs{display:grid;grid-template-columns:repeat(auto-fit,minmax(104px,1fr));
+    gap:1px;background:var(--rule);border-bottom:1px solid var(--rule)}
+  .field{background:var(--paper);padding:9px 11px 8px}
+  .field label{display:block;font:500 8.5px/1 var(--mono);letter-spacing:.16em;
+    text-transform:uppercase;color:var(--steel);margin-bottom:5px}
+  .field input,.field select{width:100%;border:0;background:transparent;color:var(--ink);
+    font:600 16px/1.2 var(--mono);padding:0;outline:none;appearance:none}
+  .field input:focus,.field select:focus{color:var(--accent)}
+  #go{grid-column:1/-1;background:var(--ink);color:var(--paper);border:0;padding:14px;
+    font:600 11px/1 var(--mono);letter-spacing:.2em;text-transform:uppercase;cursor:pointer}
+  #go:active{background:var(--accent)}
+
+  /* ---------- envelope readout ---------- */
+  #envelope{display:flex;gap:0;overflow-x:auto;border-bottom:1px solid var(--rule);background:var(--paper)}
+  #envelope .cell{padding:9px 13px;border-left:1px solid var(--rule);white-space:nowrap}
+  #envelope .cell:first-child{border-left:0}
+  #envelope b{display:block;font:600 13px/1.2 var(--mono)}
+  #envelope span{display:block;font:500 8.5px/1 var(--mono);letter-spacing:.14em;
+    text-transform:uppercase;color:var(--steel);margin-top:4px}
+  #envelope b.bad{color:var(--warn)} #envelope b.good{color:var(--ok)}
+
+  /* ---------- option cards ---------- */
+  .sec{padding:16px 16px 0}
+  .sechead{display:flex;align-items:baseline;gap:10px;margin-bottom:10px}
+  .sechead h2{margin:0;font:600 11px/1 var(--mono);letter-spacing:.2em;text-transform:uppercase}
+  .sechead i{flex:1;height:1px;background:var(--rule)}
+  .sechead u{text-decoration:none;font:500 10px/1 var(--mono);color:var(--steel)}
+
+  #cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:10px}
+  .card{background:var(--paper);border:1px solid var(--rule);cursor:pointer;
+    transition:border-color .15s,transform .15s;overflow:hidden}
+  .card:hover{border-color:var(--ink)}
+  .card.sel{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+  .card svg{display:block;width:100%;height:auto;background:#fff}
+  .card .meta{padding:8px 9px;border-top:1px solid var(--rule)}
+  .card .meta b{display:block;font:600 11px/1.3 var(--mono)}
+  .card .meta span{display:block;font:500 9px/1.4 var(--mono);color:var(--steel);margin-top:3px}
+  .card .meta em{font-style:normal;color:var(--accent)}
+  .card .meta .flag{color:var(--warn)}
+
+  /* ---------- detail ---------- */
+  .tabs{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
+  .tabs button{font:600 10px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;
+    padding:9px 11px;border:1px solid var(--rule);background:transparent;color:var(--ink);cursor:pointer}
+  .tabs button.on{background:var(--ink);border-color:var(--ink);color:var(--paper)}
+  .pane{display:none;background:var(--paper);border:1px solid var(--rule)}
+  .pane.on{display:block}
+  #planWrap{background:#fff}
+  #planWrap svg{display:block;width:100%;height:auto}
+  #view3d{height:min(62vh,460px);position:relative;background:
+    radial-gradient(120% 80% at 50% 10%,#fff 0%,#e9ecea 50%,#cdd3d1 100%)}
+  #view3d canvas{display:block;touch-action:none}
+  #v3hint{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);
+    font:500 9px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--steel)}
+
+  table{width:100%;border-collapse:collapse;font:500 11.5px/1.35 var(--mono)}
+  th{text-align:left;font:500 8.5px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;
+    color:var(--steel);padding:9px;border-bottom:1px solid var(--rule)}
+  td{padding:7px 9px;border-bottom:1px solid #dfe3e1}
+  td.num{text-align:right}
+  tr.tot td{font-weight:700;border-bottom:1px solid var(--rule)}
+  tr.sub td{background:#eceeec;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--steel)}
+  .flagdot{color:var(--warn)}
+
+  footer{position:fixed;left:0;right:0;bottom:0;background:rgba(246,247,246,.95);
+    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-top:1px solid var(--rule);
+    padding:8px 12px calc(8px + env(safe-area-inset-bottom));display:flex;gap:8px;
+    align-items:center;justify-content:space-between}
+  footer .note{font:500 9px/1.35 var(--mono);color:var(--steel);flex:1;min-width:0}
+  footer button{font:600 10px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;
+    padding:9px 11px;border:1px solid var(--rule);background:transparent;cursor:pointer}
+  footer button.k{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+
+  @media print{
+    body{background:#fff;padding:0}
+    header p,#inputs,footer,.tabs,#cards,#view3d,#v3hint{display:none!important}
+    .pane{display:block!important;border:0;page-break-inside:avoid}
+    .sec{padding:0 0 12px}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="eyebrow">Parametric residential generator / v0.1</div>
+  <h1>Plot in. <em>Schemes out.</em></h1>
+  <p>Enter the site. The rules engine applies setbacks and FAR, then four partition strategies pack a dimensioned plan into the buildable envelope.</p>
+</header>
+
+<div id="inputs">
+  <div class="field"><label>Width ft</label><input id="iW" type="number" value="30" min="15" max="120" step="1" inputmode="decimal"></div>
+  <div class="field"><label>Depth ft</label><input id="iD" type="number" value="40" min="20" max="150" step="1" inputmode="decimal"></div>
+  <div class="field"><label>Floors</label>
+    <select id="iF"><option value="1">G</option><option value="2" selected>G + 1</option><option value="3">G + 2</option></select></div>
+  <div class="field"><label>Bedrooms</label>
+    <select id="iB"><option>2</option><option selected>3</option><option>4</option><option>5</option></select></div>
+  <div class="field"><label>Road facing</label>
+    <select id="iO"><option>East</option><option>West</option><option>North</option><option>South</option></select></div>
+  <div class="field"><label>Unit type</label>
+    <select id="iU"><option value="0">Single family</option><option value="1">Rental floors</option></select></div>
+  <div class="field"><label>Rule set</label>
+    <select id="iR"><option value="bbmp">BBMP / RMP</option><option value="custom">Manual</option></select></div>
+  <button id="go">Generate schemes</button>
+</div>
+
+<div id="envelope"></div>
+
+<div class="sec">
+  <div class="sechead"><h2>Schemes</h2><i></i><u id="seedlbl">seed 01</u></div>
+  <div id="cards"></div>
+</div>
+
+<div class="sec" id="detailSec">
+  <div class="sechead"><h2 id="optName">—</h2><i></i><u id="optTag"></u></div>
+  <div class="tabs" id="tabs"></div>
+  <div class="pane on" id="panePlan"><div id="planWrap"></div></div>
+  <div class="pane" id="pane3d"><div id="view3d"><div id="v3hint">drag to orbit · pinch to zoom</div></div></div>
+  <div class="pane" id="paneSched"></div>
+</div>
+
+<footer>
+  <div class="note">Setbacks &amp; FAR are defaults, not sanction. Verify at BBMP/GBA before filing.</div>
+  <button id="btnFlip">Flip</button>
+  <button id="btnSeed">Reroll</button>
+  <button id="btnPrint" class="k">Print</button>
+</footer>
+
+<script id="engine">
+/* =====================================================================
+   ENGINE — pure logic, no DOM, no THREE. This is the product.
+   Everything below it is just a viewer.
+   ===================================================================== */
+var ENGINE = (function(){
+
+  var SQM = 10.7639;
+  var FAR_LIMIT = 1.75;
+
+  /* --- minimum usable dimensions (ft) per room type --- */
+  var MIN = {
+    'Living':[11,11],'Dining':[8.5,8],'Kitchen':[7.5,8.5],'Bedroom':[10,10],
+    'Master Bedroom':[11,11.5],'Toilet':[3.8,6],'Stair':[6.5,8.5],'Utility':[3.5,4],
+    'Foyer':[3.5,4],'Puja':[3.5,3.5],'Balcony':[4,4.5],'Store':[3,3.5],
+    'Court':[5,5],'Passage':[3,5],'Study':[8,8],'Wash':[3.5,4],'Terrace':[6,6],
+    'Landing':[3.5,4],'Family':[8.5,8.5]
+  };
+  var OPEN = ['Balcony','Court','Terrace','Porch','Deck','Parking'];
+  var WET  = ['Toilet','Kitchen','Utility','Wash'];
+
+  function base(n){ return String(n).replace(/\s*\d+$/,'').trim(); }
+  function isOpen(n){ return OPEN.indexOf(base(n))>=0; }
+  function isWet(n){ return WET.indexOf(base(n))>=0; }
+  function minFor(n){ return MIN[base(n)] || [3,3]; }
+
+  function ftIn(v){
+    var ft = Math.floor(v + 0.0005), i = Math.round((v-ft)*12);
+    if(i===12){ ft++; i=0; }
+    return ft + "'-" + (i<10?'0':'') + i + '"';
+  }
+
+  /* --- setback rules -------------------------------------------------
+     <=60 m2   : front 0.75m, no rear, one side 0.6m
+     <=150 m2  : front 0.90m, rear 0.70m, one side 0.70m
+     >150 m2   : front 12% depth, rear 8% depth, both sides 8% width
+  --------------------------------------------------------------------*/
+  function setbacks(W,D){
+    var sqm = (W*D)/SQM;
+    if(sqm <= 60)  return {front:2.5, rear:0,   side:2.0, oneSide:true,  rule:'≤ 60 m²'};
+    if(sqm <= 150) return {front:3.0, rear:2.3, side:2.3, oneSide:true,  rule:'≤ 150 m²'};
+    return {front:+(D*0.12).toFixed(2), rear:+(D*0.08).toFixed(2),
+            side:+(W*0.08).toFixed(2), oneSide:false, rule:'> 150 m² (%)'};
+  }
+
+  function envelope(W,D,sb){
+    sb = sb || setbacks(W,D);
+    var bw = W - sb.side*(sb.oneSide?1:2);
+    var bd = D - sb.front - sb.rear;
+    return {W:W, D:D, sb:sb, bw:+bw.toFixed(2), bd:+bd.toFixed(2),
+            plot:W*D, foot:bw*bd, cover:(bw*bd)/(W*D)};
+  }
+
+  /* --- bedrooms per floor --- */
+  function program(beds, floors){
+    if(floors===1) return [beds];
+    if(floors===2) return [beds>=3?1:0, beds - (beds>=3?1:0)];
+    var g = beds>=4?1:0, rest = beds-g, a = Math.ceil(rest/2);
+    return [g, a, rest-a];
+  }
+
+  /* --- layout DSL ---------------------------------------------------
+     BD/BDF  band, proportional or fixed depth
+     C/CF    column, proportional or fixed width
+     ST/STF  column split into rows (depth-wise)
+     rw/rf   row, proportional or fixed depth
+  --------------------------------------------------------------------*/
+  function BD(d,cols){ return {d:d, cols:cols}; }
+  function BDF(fd,cols){ return {fd:fd, cols:cols}; }
+  function C(n,w){ return {n:n, w:w}; }
+  function CF(n,fw){ return {n:n, fw:fw}; }
+  function ST(w,rows){ return {w:w, rows:rows}; }
+  function STF(fw,rows){ return {fw:fw, rows:rows}; }
+  function rw(n,d){ return {n:n, d:d}; }
+  function rf(n,fd){ return {n:n, fd:fd}; }
+
+  /* service elements get REAL fixed sizes, scaled down only on tight plots.
+     Living spaces absorb whatever is left — that is what keeps proportions sane. */
+  function kit(bw){
+    var k = Math.max(0.70, Math.min(1, bw/25));
+    return {
+      k:k,
+      SW:+(8.5*k).toFixed(2),      // stair width
+      TW:+(5.5*k).toFixed(2),      // toilet width
+      TD:+(7*k).toFixed(2),        // toilet depth
+      UD:+(4.5*k).toFixed(2),      // utility depth
+      PW:+(4.5*k).toFixed(2),      // puja width
+      BLD:+(5*k).toFixed(2),       // balcony depth
+      PASS:+(3.5*k).toFixed(2),    // passage width
+      KW:+(11*k).toFixed(2),       // kitchen block width
+      BEDW: +Math.min(12.5*k, Math.max(9.5*k, bw-12.5)).toFixed(2)
+    };
+  }
+
+  /* bedroom dispenser: honours the per-floor quota, falls back gracefully */
+  function dispenser(ctx, i){
+    var left = ctx.perFloor[i];
+    return function(master, fallback){
+      if(left > 0){
+        left--;
+        if(master) return 'Master Bedroom';
+        ctx.count++; return 'Bedroom ' + ctx.count;
+      }
+      return fallback || 'Study';
+    };
+  }
+
+  /* narrow plots (<20 ft buildable) get single-loaded bands — no side-by-side rooms */
+  function narrowPlan(ctx, i, variant){
+    var d = ctx.kit, b = dispenser(ctx, i), stairFirst = (variant % 2) === 1;
+    if(i === 0){
+      var mid = stairFirst
+        ? BD(1.5, [CF('Stair', d.SW), C('Dining', 1)])
+        : BD(1.5, [C('Dining', 1), CF('Stair', d.SW)]);
+      return [
+        BD(2.9, [C('Living', 1)]),
+        mid,
+        BD(2.4, [C(b(false,'Study'), 1), CF('Toilet 1', d.TW)]),
+        BD(2.2, [C('Kitchen', 1), CF('Utility', d.UD)])
+      ];
+    }
+    return [
+      BDF(d.BLD, [C('Balcony', 1)]),
+      BD(2.6, [C(b(true,'Family'), 1)]),
+      BD(1.6, [CF('Stair', d.SW), C('Family', 1)]),
+      BD(2.5, [C(b(false,'Terrace'), 1), CF('Toilet', d.TW)])
+    ];
+  }
+
+  /* upper floors — depth-driven. Count how many bedroom bands the depth can
+     actually hold (each needs BEDD, plus ~9 ft for the stair/service band)
+     instead of forcing a fixed band list into a depth that cannot take it. */
+  function upper(ctx, i, style){
+    var d = ctx.kit, b = dispenser(ctx, i);
+    var BEDD  = Math.max(10.5, Math.min(14, ctx.bd*0.33));
+    var strip = Math.max(d.BLD, d.TD);
+    var svc   = ctx.rental ? 'Kitchen' : 'Store';
+    var avail = ctx.bd - strip;
+    var nBed  = Math.max(1, Math.min(2, Math.floor((avail - 9)/BEDD)));
+
+    var out = [ BDF(strip, [ C('Balcony',1), CF('Toilet', d.TW) ]) ];
+    out.push(BDF(BEDD, [ C(b(true,'Family'),1), CF(b(false,'Study'), d.BEDW) ]));
+    if(nBed > 1) out.push(BDF(BEDD, [ C(b(false,'Family'),1), CF('Toilet', d.TW) ]));
+    if(style === 'court' && avail - nBed*BEDD > 17)
+      out.push(BDF(Math.max(8, ctx.bd*0.15), [ C('Court',1), C('Family',1.7), CF('Toilet', d.TW) ]));
+
+    var rear = [ ST(1, [ rw(b(false,'Family'),1), rf(svc, 6) ]) ];
+    if(style === 'spine') rear.push(CF('Passage', d.PASS));
+    rear.push(STF(d.TW, [ rf('Toilet', d.TD), rw('Store',1) ]));
+    var stairCol = STF(d.SW, [ rw('Stair',1), rf('Wash', d.UD) ]);
+    if(style === 'rear') rear.unshift(stairCol); else rear.push(stairCol);
+    out.push(BD(1, rear));
+    return out;
+  }
+
+  /* =========== SCHEME BUILDERS ============
+     Services pack toward the RIGHT edge — the blind boundary when only
+     one side setback is required. Flip mirrors the whole plan.
+     ======================================== */
+  var SCHEMES = [
+    {
+      id:'S1', name:'Linear Core', facade:'skillion',
+      tag:'Stair mid-right, kitchen rear. The default Bengaluru plan.',
+      floor:function(ctx,i){
+        if(ctx.narrow) return narrowPlan(ctx,i,0);
+        var d=ctx.kit, b=dispenser(ctx,i);
+        if(i===0) return [
+          BD(2.7, [ C('Living',1), CF(b(false,'Study'), d.BEDW) ]),
+          BD(1.7, [ C('Dining',1), CF('Toilet 1', d.TW), CF('Stair', d.SW) ]),
+          BD(2.7, [ STF(d.KW, [rw('Kitchen',1), rf('Utility', d.UD)]),
+                    C('Family',1), STF(d.PW, [rf('Puja',5), rw('Store',1)]) ])
+        ];
+        return upper(ctx,i,'core');
+        //
+      }
+    },
+    {
+      id:'S2', name:'Side Spine', facade:'screen',
+      tag:'Circulation spine on the blind edge. No dead passages.',
+      floor:function(ctx,i){
+        if(ctx.narrow) return narrowPlan(ctx,i,1);
+        var d=ctx.kit, b=dispenser(ctx,i);
+        if(i===0) return [
+          BD(2.6, [ C('Living',1), STF(d.SW, [rf('Foyer',4.5), rw('Stair',1)]) ]),
+          BD(1.7, [ C('Dining',1), CF('Passage', d.PASS), CF('Toilet 1', d.TW) ]),
+          BD(2.4, [ C(b(false,'Family'),1), STF(d.KW, [rw('Kitchen',1), rf('Utility', d.UD)]) ])
+        ];
+        return upper(ctx,i,'spine');
+        //
+      }
+    },
+    {
+      id:'S3', name:'Light Court', facade:'terrace',
+      tag:'Court cut into the middle band — light and cross-vent on deep plots.',
+      floor:function(ctx,i){
+        if(ctx.narrow) return narrowPlan(ctx,i,2);
+        var d=ctx.kit, b=dispenser(ctx,i);
+        if(i===0) return [
+          BD(2.6, [ C('Living',1), CF('Stair', d.SW) ]),
+          BDF(Math.max(8, ctx.bd*0.18), [ C('Court',1), C('Dining',1.7), CF('Toilet 1', d.TW) ]),
+          BD(2.4, [ C(b(false,'Family'),1), STF(d.KW, [rw('Kitchen',1), rf('Utility', d.UD)]) ])
+        ];
+        return upper(ctx,i,'court');
+        //
+      }
+    },
+    {
+      id:'S4', name:'Rear Stair', facade:'box',
+      tag:'Full-width living at the road. Stair and services pushed to the rear.',
+      floor:function(ctx,i){
+        if(ctx.narrow) return narrowPlan(ctx,i,3);
+        var d=ctx.kit, b=dispenser(ctx,i);
+        if(i===0) return [
+          BD(2.5, [ C('Living',1) ]),
+          BD(2.1, [ C('Dining',1), CF(b(false,'Study'), d.BEDW), CF('Toilet 1', d.TW) ]),
+          BD(2.2, [ STF(d.KW, [rw('Kitchen',1), rf('Utility', d.UD)]),
+                    C('Family',1), CF('Stair', d.SW) ])
+        ];
+        return upper(ctx,i,'rear');
+        //
+      }
+    }
+  ];
+
+  /* --- pack a floor definition into the envelope ---------------------
+     Fixed service sizes may shrink (to 72% of nominal) when the
+     proportional neighbour would otherwise fall under its minimum.
+     That single relief pass is what keeps small plots buildable.
+  --------------------------------------------------------------------*/
+  function relief(items, total, fixedKey, minOf){
+    var fx=0, need=0;
+    items.forEach(function(it){
+      if(it[fixedKey]) fx += it[fixedKey];
+      else need += minOf(it);
+    });
+    if(fx>0 && total-fx < need){
+      var want = Math.max(fx*0.72, total-need);
+      var f = want/fx;
+      items.forEach(function(it){ if(it[fixedKey]) it['_'+fixedKey] = it[fixedKey]*f; });
+      return want;
+    }
+    items.forEach(function(it){ if(it[fixedKey]) it['_'+fixedKey] = it[fixedKey]; });
+    return fx;
+  }
+  function minSide(n){ var m=minFor(n); return Math.min(m[0],m[1]); }
+  function colMin(c){ return c.rows ? Math.max.apply(null,c.rows.map(function(r){return minFor(r.n)[0];})) : minFor(c.n)[0]; }
+
+  function packFloor(bands, bw, bd, relax){
+    var rooms=[], y=0, fixedD=0, wsum=0;
+    bands.forEach(function(b){ b.fd ? fixedD+=b.fd : wsum+=b.d; });
+    bands.forEach(function(b){
+      var dep = b.fd ? b.fd : Math.max(0, bd-fixedD) * b.d / wsum;
+      var fixedW = relief(b.cols, bw, 'fw', colMin);
+      var csum=0;
+      b.cols.forEach(function(c){ if(!c.fw) csum+=c.w; });
+      var x=0;
+      b.cols.forEach(function(c){
+        var wid = c.fw ? c._fw : Math.max(0, bw-fixedW) * c.w / csum;
+        if(c.rows){
+          var fr = relief(c.rows, dep, 'fd', function(r){ return minSide(r.n); });
+          var rs=0; c.rows.forEach(function(r){ if(!r.fd) rs+=r.d; });
+          var yy=y;
+          c.rows.forEach(function(r){
+            var dd = r.fd ? r._fd : Math.max(0, dep-fr) * r.d / rs;
+            rooms.push(mkRoom(r.n,x,yy,wid,dd,relax)); yy+=dd;
+          });
+        } else rooms.push(mkRoom(c.n,x,y,wid,dep,relax));
+        x += wid;
+      });
+      y += dep;
+    });
+    return rooms;
+  }
+
+  function mkRoom(n,x,y,w,d,relax){
+    var rx = relax||1, m0 = minFor(n), m = [m0[0]*rx, m0[1]*rx];
+    var fits = (w>=m[0]-0.08 && d>=m[1]-0.08) || (w>=m[1]-0.08 && d>=m[0]-0.08);
+    return {n:n, x:+x.toFixed(2), y:+y.toFixed(2), w:+w.toFixed(2), d:+d.toFixed(2),
+            area:+(w*d).toFixed(1), open:isOpen(n), wet:isWet(n), warn:!fits,
+            min:[+m[0].toFixed(1),+m[1].toFixed(1)]};
+  }
+
+  function mirror(rooms,bw){
+    return rooms.map(function(r){
+      var c={}; for(var k in r) c[k]=r[k];
+      c.x = +(bw - r.x - r.w).toFixed(2); return c;
+    });
+  }
+
+  /* --- generate every scheme for a site --- */
+  function generate(opts){
+    var W=+opts.width, D=+opts.depth, floors=+opts.floors, beds=+opts.beds;
+    var seed=opts.seed||0, flip=!!opts.flip;
+    var env = envelope(W,D);
+    var perFloor = program(beds,floors);
+
+    return SCHEMES.map(function(S,si){
+      var jitter = seed
+        ? function(v,k){ return v*(1 + 0.06*Math.sin(seed*7.3 + si*2.1 + k*1.7)); }
+        : function(v){ return v; };
+      var relax = env.bw < 20 ? 0.82 : (env.bw < 24 ? 0.92 : 1);
+      var ctx = {perFloor:perFloor, beds:beds, floors:floors, count:0, rental:!!opts.rental,
+                 bw:env.bw, bd:env.bd, kit:kit(env.bw), narrow: env.bw < 20};
+      var fl=[], built=0, openArea=0, warns=0, tight=[];
+      for(var i=0;i<floors;i++){
+        var bands = S.floor(ctx,i);
+        bands.forEach(function(b,bi){ if(!b.fd) b.d = jitter(b.d,bi); });
+        var rooms = packFloor(bands, env.bw, env.bd, relax);
+        if(flip) rooms = mirror(rooms, env.bw);
+        rooms.forEach(function(r){
+          if(r.open) openArea += r.area; else built += r.area;
+          if(r.warn && !r.open){ warns++; tight.push(r.n); }
+        });
+        fl.push({name: ['Ground Floor','First Floor','Second Floor'][i] || ('Floor '+i),
+                 rooms:rooms});
+      }
+      var far = built/env.plot;
+      return {
+        id:S.id, name:S.name, tag:S.tag, facade:S.facade, env:env, floors:fl,
+        built:+built.toFixed(0), open:+openArea.toFixed(0), warns:warns, tight:tight,
+        far:+far.toFixed(2), farOk: far <= FAR_LIMIT + 0.005, relax:relax,
+        overBy: Math.max(0, Math.round(built - env.plot*FAR_LIMIT)),
+        carpet:+(built*0.82).toFixed(0)
+      };
+    });
+  }
+
+  return {generate:generate, setbacks:setbacks, envelope:envelope, ftIn:ftIn,
+          FAR_LIMIT:FAR_LIMIT, SCHEMES:SCHEMES, program:program, packFloor:packFloor};
+})();
+if (typeof module !== 'undefined') module.exports = ENGINE;
+
+</script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+"use strict";
+var $=function(s){return document.querySelector(s);};
+var state={opts:null, schemes:[], sel:0, seed:0, flip:false, tab:0};
+
+/* ------------------------------------------------------------------ */
+/* PLAN DRAWING (SVG, units = feet)                                     */
+/* ------------------------------------------------------------------ */
+var FILL={def:'#f4f2ee', wet:'#e3ecf0', open:'#eef3e8', stair:'#eae7e2', live:'#f7f1e6'};
+function roomFill(r){
+  if(r.open) return FILL.open;
+  if(r.wet) return FILL.wet;
+  if(/Stair|Passage|Foyer/.test(r.n)) return FILL.stair;
+  if(/Living|Family|Dining/.test(r.n)) return FILL.live;
+  return FILL.def;
+}
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+
+function drawPlan(sch, fi, mini){
+  var e=sch.env, sb=e.sb, W=e.W, D=e.D, fl=sch.floors[fi];
+  var pad = mini?2.5:7;
+  var vb=[-pad, -pad, W+pad*2, D+pad*2];
+  var s=[];
+  var sw=mini?0.22:0.14, fsz=mini?2.2:1.3;
+  s.push('<svg xmlns="http://www.w3.org/2000/svg" viewBox="'+vb.join(' ')+'" font-family="ui-monospace,Menlo,monospace">');
+  s.push('<rect x="'+vb[0]+'" y="'+vb[1]+'" width="'+vb[2]+'" height="'+vb[3]+'" fill="#ffffff"/>');
+  // plot boundary
+  s.push('<rect x="0" y="0" width="'+W+'" height="'+D+'" fill="#f0f2f0" stroke="#14171a" stroke-width="'+sw+'" stroke-dasharray="1.6 0.9"/>');
+  // buildable envelope
+  var ox = sb.oneSide ? sb.side : sb.side, oy = sb.rear;  // origin of envelope (rear-left)
+  s.push('<rect x="'+ox+'" y="'+oy+'" width="'+e.bw+'" height="'+e.bd+'" fill="none" stroke="#e07b1e" stroke-width="'+sw+'" stroke-dasharray="1 0.7"/>');
+  // rooms — plan y runs front(0) -> rear, so flip into SVG space
+  fl.rooms.forEach(function(r){
+    var X = ox + r.x, Y = oy + (e.bd - r.y - r.d);
+    s.push('<rect x="'+X+'" y="'+Y+'" width="'+r.w+'" height="'+r.d+'" fill="'+roomFill(r)+'" stroke="#14171a" stroke-width="'+(sw*1.6)+'"/>');
+    if(r.open) s.push('<line x1="'+X+'" y1="'+(Y+r.d)+'" x2="'+(X+r.w)+'" y2="'+Y+'" stroke="#9aa79a" stroke-width="'+sw*0.7+'"/>');
+    if(/Stair/.test(r.n)){
+      for(var t=1;t<8;t++){ var yy=Y+r.d*t/8;
+        s.push('<line x1="'+(X+0.4)+'" y1="'+yy+'" x2="'+(X+r.w-0.4)+'" y2="'+yy+'" stroke="#8d9490" stroke-width="'+sw*0.6+'"/>'); }
+    }
+    if(!mini){
+      var cx=X+r.w/2, cy=Y+r.d/2;
+      if(r.w>4.2 && r.d>3.4){
+        s.push('<text x="'+cx+'" y="'+(cy-0.25)+'" font-size="'+fsz+'" font-weight="700" fill="'+(r.warn?'#c0392b':'#14171a')+'" text-anchor="middle">'+esc(r.n.toUpperCase())+'</text>');
+        s.push('<text x="'+cx+'" y="'+(cy+1.5)+'" font-size="'+(fsz*0.86)+'" fill="#5d666d" text-anchor="middle">'+ENGINE.ftIn(r.w)+' × '+ENGINE.ftIn(r.d)+'</text>');
+      } else {
+        s.push('<text x="'+cx+'" y="'+(cy+0.4)+'" font-size="'+(fsz*0.8)+'" fill="'+(r.warn?'#c0392b':'#5d666d')+'" text-anchor="middle" transform="rotate(-90 '+cx+' '+cy+')">'+esc(r.n.toUpperCase())+'</text>');
+      }
+    }
+  });
+  if(!mini){
+    // dimension chains: room widths across the front, band depths up the left
+    var front = fl.rooms.filter(function(r){ return Math.abs(r.y)<0.02; })
+                        .sort(function(a,b){return a.x-b.x;});
+    var yLine = oy + e.bd + 2.4;
+    front.forEach(function(r){ dim(s, ox+r.x, yLine, ox+r.x+r.w, yLine, ENGINE.ftIn(r.w)); });
+    var lefts = {};
+    fl.rooms.forEach(function(r){ lefts[r.y.toFixed(2)] = Math.max(lefts[r.y.toFixed(2)]||0, r.d); });
+    var xLine = ox - 2.4;
+    Object.keys(lefts).sort(function(a,b){return a-b;}).forEach(function(k){
+      var y0 = +k, dd = lefts[k];
+      var Y1 = oy + (e.bd - y0), Y0 = Y1 - dd;
+      dim(s, xLine, Y0, xLine, Y1, ENGINE.ftIn(dd), true);
+    });
+    dim(s, 0, -3.2, W, -3.2, ENGINE.ftIn(W)+' PLOT');
+    dim(s, W+3.2, 0, W+3.2, D, ENGINE.ftIn(D)+' PLOT', true);
+    s.push('<text x="0" y="'+(D+5.4)+'" font-size="1.5" font-weight="700" fill="#14171a">'+esc(fl.name.toUpperCase())+'  ·  '+esc(sch.name.toUpperCase())+'</text>');
+    s.push('<text x="0" y="'+(D+7.2)+'" font-size="1.15" fill="#5d666d">ROAD SIDE ↓  ·  SETBACKS F '+ENGINE.ftIn(sb.front)+'  R '+ENGINE.ftIn(sb.rear)+'  S '+ENGINE.ftIn(sb.side)+(sb.oneSide?' (ONE SIDE)':' (BOTH)')+'</text>');
+  }
+  s.push('</svg>');
+  return s.join('');
+}
+function dim(s,x1,y1,x2,y2,txt,vert){
+  s.push('<line x1="'+x1+'" y1="'+y1+'" x2="'+x2+'" y2="'+y2+'" stroke="#14171a" stroke-width="0.09"/>');
+  var t=0.55;
+  if(vert){
+    s.push('<line x1="'+(x1-t)+'" y1="'+y1+'" x2="'+(x1+t)+'" y2="'+y1+'" stroke="#14171a" stroke-width="0.09"/>');
+    s.push('<line x1="'+(x2-t)+'" y1="'+y2+'" x2="'+(x2+t)+'" y2="'+y2+'" stroke="#14171a" stroke-width="0.09"/>');
+    var my=(y1+y2)/2;
+    s.push('<text x="'+(x1-0.5)+'" y="'+my+'" font-size="1.1" fill="#14171a" text-anchor="middle" transform="rotate(-90 '+(x1-0.5)+' '+my+')">'+txt+'</text>');
+  } else {
+    s.push('<line x1="'+x1+'" y1="'+(y1-t)+'" x2="'+x1+'" y2="'+(y1+t)+'" stroke="#14171a" stroke-width="0.09"/>');
+    s.push('<line x1="'+x2+'" y1="'+(y2-t)+'" x2="'+x2+'" y2="'+(y2+t)+'" stroke="#14171a" stroke-width="0.09"/>');
+    s.push('<text x="'+((x1+x2)/2)+'" y="'+(y1-0.7)+'" font-size="1.1" fill="#14171a" text-anchor="middle">'+txt+'</text>');
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* 3D MASSING                                                          */
+/* ------------------------------------------------------------------ */
+var R={};
+function init3d(){
+  if(R.ready) return;
+  var host=$('#view3d');
+  R.renderer=new THREE.WebGLRenderer({antialias:true, alpha:true});
+  R.renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  R.renderer.shadowMap.enabled=true; R.renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+  R.renderer.outputEncoding=THREE.sRGBEncoding;
+  R.renderer.toneMapping=THREE.ACESFilmicToneMapping;
+  host.appendChild(R.renderer.domElement);
+  R.scene=new THREE.Scene();
+  var c=document.createElement('canvas'); c.width=8;c.height=128;
+  var g=c.getContext('2d'), grd=g.createLinearGradient(0,0,0,128);
+  grd.addColorStop(0,'#f2f8ff');grd.addColorStop(.47,'#ccdaea');
+  grd.addColorStop(.53,'#9aa2a6');grd.addColorStop(1,'#5a6167');
+  g.fillStyle=grd;g.fillRect(0,0,8,128);
+  var t=new THREE.CanvasTexture(c); t.mapping=THREE.EquirectangularReflectionMapping;
+  R.scene.environment=t;
+  R.camera=new THREE.PerspectiveCamera(38,1,.5,600);
+  R.scene.add(new THREE.HemisphereLight(0xdcebff,0x9a8f7d,.6));
+  var sun=new THREE.DirectionalLight(0xfff3e2,2.2); sun.position.set(38,52,34);
+  sun.castShadow=true; sun.shadow.mapSize.set(1536,1536); sun.shadow.bias=-.0006;
+  var sc=sun.shadow.camera; sc.left=-55;sc.right=55;sc.top=55;sc.bottom=-40;sc.far=170;
+  R.scene.add(sun);
+  var fill=new THREE.DirectionalLight(0xbcd4ff,.32); fill.position.set(-32,20,-24); R.scene.add(fill);
+  R.group=new THREE.Group(); R.scene.add(R.group);
+  R.M={
+    white:new THREE.MeshStandardMaterial({color:0xe9ebec,roughness:.9}),
+    grey:new THREE.MeshStandardMaterial({color:0xd2d6d8,roughness:.92}),
+    dark:new THREE.MeshStandardMaterial({color:0x33383d,roughness:.72}),
+    ink:new THREE.MeshStandardMaterial({color:0x14171a,roughness:.55,metalness:.2}),
+    accent:new THREE.MeshStandardMaterial({color:0xe07b1e,roughness:.68}),
+    accentD:new THREE.MeshStandardMaterial({color:0xbf6510,roughness:.7}),
+    glass:new THREE.MeshStandardMaterial({color:0x8fa3b0,roughness:.06,metalness:.55,transparent:true,opacity:.44}),
+    steel:new THREE.MeshStandardMaterial({color:0xb9c0c6,roughness:.22,metalness:.85}),
+    grass:new THREE.MeshStandardMaterial({color:0x7d9a58,roughness:1}),
+    pav:new THREE.MeshStandardMaterial({color:0xbfc4c4,roughness:.97}),
+    leaf:new THREE.MeshStandardMaterial({color:0x4f8438,roughness:.95}),
+    trunk:new THREE.MeshStandardMaterial({color:0x6b4b30,roughness:1})
+  };
+  R.theta=-0.66; R.phi=1.14; R.radius=90; R.target=new THREE.Vector3(0,10,0);
+  var el=R.renderer.domElement, pts=new Map(), lastP=0;
+  el.addEventListener('pointerdown',function(e){ el.setPointerCapture(e.pointerId); pts.set(e.pointerId,{x:e.clientX,y:e.clientY}); });
+  el.addEventListener('pointermove',function(e){
+    if(!pts.has(e.pointerId))return;
+    var p=pts.get(e.pointerId), dx=e.clientX-p.x, dy=e.clientY-p.y; p.x=e.clientX;p.y=e.clientY;
+    if(pts.size===1){ R.theta-=dx*0.006; R.phi=Math.min(1.5,Math.max(0.16,R.phi-dy*0.005)); }
+    else { var a=[].concat(Array.from(pts.values())), d=Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y);
+      if(lastP) R.radius=Math.min(210,Math.max(30,R.radius-(d-lastP)*0.4)); lastP=d; }
+  });
+  ['pointerup','pointercancel','pointerleave'].forEach(function(ev){
+    el.addEventListener(ev,function(e){ pts.delete(e.pointerId); if(pts.size<2) lastP=0; }); });
+  el.addEventListener('wheel',function(e){ e.preventDefault(); R.radius=Math.min(210,Math.max(30,R.radius+e.deltaY*0.07)); },{passive:false});
+  R.ready=true;
+  (function loop(){ requestAnimationFrame(loop); if(!R.ready) return;
+    var x=R.target.x+R.radius*Math.sin(R.phi)*Math.sin(R.theta);
+    var y=R.target.y+R.radius*Math.cos(R.phi);
+    var z=R.target.z+R.radius*Math.sin(R.phi)*Math.cos(R.theta);
+    R.camera.position.set(x,y,z); R.camera.lookAt(R.target);
+    R.renderer.render(R.scene,R.camera); })();
+  size3d();
+}
+function size3d(){
+  if(!R.ready) return;
+  var host=$('#view3d'), w=host.clientWidth, h=host.clientHeight;
+  if(!w||!h) return;
+  R.camera.aspect=w/h; R.camera.updateProjectionMatrix(); R.renderer.setSize(w,h);
+}
+function slab3(x0,x1,y0,y1,z0,z1,m,parent){
+  var g=new THREE.BoxGeometry(Math.abs(x1-x0)||.02,Math.abs(y1-y0)||.02,Math.abs(z1-z0)||.02);
+  var mesh=new THREE.Mesh(g,m);
+  mesh.position.set((x0+x1)/2,(y0+y1)/2,(z0+z1)/2);
+  mesh.castShadow=true; mesh.receiveShadow=true;
+  (parent||R.group).add(mesh); return mesh;
+}
+function build3d(sch){
+  init3d();
+  while(R.group.children.length) R.group.remove(R.group.children[0]);
+  var e=sch.env, W=e.W, D=e.D, sb=e.sb, bw=e.bw, bd=e.bd, n=sch.floors.length;
+  var X0=-W/2 + sb.side, X1=X0+bw;              // building in world X
+  var Z1=D/2 - sb.front, Z0=Z1-bd;              // +Z is the road side
+  var FH=10, PL=1.6;                            // floor height, plinth
+  var M=R.M;
+  // site
+  slab3(-W/2,W/2,-0.7,0,-D/2,D/2,M.pav).castShadow=false;
+  slab3(-W/2+.5,W/2-.5,0,.06,-D/2+.5,D/2-.5,M.grass).castShadow=false;
+  slab3(X0-2,X1,0,.1,Z1,D/2,M.pav).castShadow=false;
+  [[-W/2,-W/2+.5,-D/2,D/2],[W/2-.5,W/2,-D/2,D/2],[-W/2,W/2,-D/2,-D/2+.5]].forEach(function(w){
+    slab3(w[0],w[1],0,2.4,w[2],w[3],M.white); });
+  slab3(-W/2,X0-2,0,2.4,D/2-.5,D/2,M.white);
+  // plinth + floors
+  slab3(X0-.8,X1+.8,0,PL,Z0-.8,Z1+.8,M.grey);
+  for(var i=0;i<n;i++){
+    var y0=PL+i*FH, y1=y0+FH;
+    slab3(X0,X1,y0,y1-1,Z0,Z0+.6,M.white);                      // rear
+    slab3(X0,X0+.5,y0,y1-1,Z0,Z1,M.white);                      // left
+    slab3(X1-.5,X1,y0,y1-1,Z0,Z1,M.dark);                       // blind side
+    slab3(X0+.5,X1-.5,y0,y1-1,Z0+.6,Z1-.6,M.white).castShadow=false;
+    // street face: glazing band + piers
+    slab3(X0,X0+1.2,y0,y1-1,Z1-.6,Z1,M.white);
+    slab3(X1-1.2,X1,y0,y1-1,Z1-.6,Z1,M.dark);
+    var gm=slab3(X0+1.2,X1-1.2,y0+1.2,y1-2.2,Z1-.45,Z1-.15,M.glass); gm.castShadow=false;
+    slab3(X0-.5,X1+.5,y1-1,y1,Z0,Z1+.7,M.white);                // floor band
+  }
+  var top=PL+n*FH;
+  // car porch under the front overhang
+  slab3(X1-13,X1,0,.12,Z1,Z1+8,M.pav).castShadow=false;
+  slab3(X1-13,X1+.6,PL+FH-1,PL+FH,Z1,Z1+8.6,M.white);
+  slab3(X1-1,X1-.4,0,PL+FH-1,Z1+7.6,Z1+8.2,M.steel);
+  // facade character
+  if(sch.facade==='skillion'){
+    var lo=top-1, hi=top+5.5, ang=Math.atan2(hi-lo,bw), len=Math.hypot(bw,hi-lo)+1.6;
+    var rf=new THREE.Mesh(new THREE.BoxGeometry(len,.5,bd+2),M.ink);
+    rf.position.set((X0+X1)/2,(lo+hi)/2+.2,(Z0+Z1)/2); rf.rotation.z=-ang;
+    rf.castShadow=true; R.group.add(rf);
+    for(var x=X0+1.4;x<X1-3;x+=.62){
+      var h=lo+(X1-x)/bw*(hi-lo)-1.2;
+      slab3(x,x+.3,PL+(n-1)*FH+1,h,Z1-.05,Z1+.32, (((x*9)|0)%2)?M.accent:M.accentD);
+    }
+  } else if(sch.facade==='screen'){
+    slab3(X0-.4,X1+.4,top,top+2.6,Z0-.4,Z1+.4,M.white);
+    for(var x2=X0+1;x2<X1-1;x2+=1.35)
+      slab3(x2,x2+.42,PL+.5,top+2,Z1+.5,Z1+.9,M.accent);
+    slab3(X0+.6,X1-.6,top+1.6,top+2,Z1+.4,Z1+1,M.ink);
+  } else if(sch.facade==='terrace'){
+    slab3(X0-.4,X1+.4,top,top+2.8,Z0-.4,Z1+.4,M.white);
+    for(var z=Z1+1;z<Z1+9;z+=1.5) slab3(X1-13,X1+1,top+2.4,top+2.8,z,z+.35,M.ink);
+    slab3(X1-13,X1+1,top+2.2,top+2.6,Z1+9,Z1+9.5,M.ink);
+    slab3(X0+1,X1-13.6,top,top+1.4,Z1-.3,Z1+.6,M.accent);
+  } else {
+    var by0=PL+FH, by1=PL+2*FH-1;
+    slab3(X0+2,X1-1,by0-.4,by1,Z1-.2,Z1+3.4,M.dark);
+    var g2=slab3(X0+3,X1-2,by0+1.4,by1-1.6,Z1+3.1,Z1+3.35,M.glass); g2.castShadow=false;
+    slab3(X0-.4,X1+.4,top,top+1.6,Z0-.4,Z1+.4,M.white);
+    slab3(X0+1,X0+2.2,PL,top,Z1-.2,Z1+3.4,M.accent);
+  }
+  // trees
+  [[-W/2+2.6,D/2-3.2,11],[W/2-2.6,D/2-3.6,10]].forEach(function(t){
+    var g3=new THREE.Group();
+    var tr=new THREE.Mesh(new THREE.CylinderGeometry(.22,.3,t[2]*.45,8),M.trunk); tr.position.y=t[2]*.22; tr.castShadow=true; g3.add(tr);
+    var cn=new THREE.Mesh(new THREE.ConeGeometry(1.6,t[2]*.62,12),M.leaf); cn.position.y=t[2]*.6; cn.castShadow=true; g3.add(cn);
+    g3.position.set(t[0],0,t[1]); R.group.add(g3);
+  });
+  R.target.set(0, top*0.45, 0);
+  R.radius = Math.max(58, (Math.max(W,D)+n*FH)*1.9);
+}
+
+/* ------------------------------------------------------------------ */
+/* SCHEDULE                                                            */
+/* ------------------------------------------------------------------ */
+function schedule(sch){
+  var h=['<table><thead><tr><th>Space</th><th>Size</th><th class="num">Sq ft</th></tr></thead><tbody>'];
+  sch.floors.forEach(function(f){
+    h.push('<tr class="sub"><td colspan="3">'+f.name+'</td></tr>');
+    f.rooms.forEach(function(r){
+      h.push('<tr><td>'+(r.warn&&!r.open?'<span class="flagdot">▲ </span>':'')+r.n+(r.open?' <span style="color:#5d666d">(open)</span>':'')+'</td>'+
+             '<td>'+ENGINE.ftIn(r.w)+' × '+ENGINE.ftIn(r.d)+'</td>'+
+             '<td class="num">'+Math.round(r.area)+'</td></tr>');
+    });
+  });
+  h.push('<tr class="tot"><td>Built-up (enclosed)</td><td>FAR '+sch.far.toFixed(2)+' / '+ENGINE.FAR_LIMIT+'</td><td class="num">'+sch.built+'</td></tr>');
+  h.push('<tr class="tot"><td>Carpet ≈ 82%</td><td>Open areas '+sch.open+' sq ft</td><td class="num">'+sch.carpet+'</td></tr>');
+  h.push('</tbody></table>');
+  if(sch.warns) h.push('<div style="padding:10px;font:500 10.5px/1.5 var(--mono);color:#c0392b">▲ '+sch.warns+' space(s) below comfortable minimum for this plot. Reduce bedrooms or add a floor.</div>');
+  return h.join('');
+}
+
+/* ------------------------------------------------------------------ */
+/* UI                                                                  */
+/* ------------------------------------------------------------------ */
+function readOpts(){
+  return {width:+$('#iW').value||30, depth:+$('#iD').value||40,
+          floors:+$('#iF').value, beds:+$('#iB').value, rental:$('#iU').value==='1',
+          seed:state.seed, flip:state.flip};
+}
+function renderEnvelope(){
+  var o=state.opts, e=ENGINE.envelope(o.width,o.depth), sb=e.sb;
+  var maxFar=(e.plot*ENGINE.FAR_LIMIT);
+  $('#envelope').innerHTML=[
+    cell(Math.round(e.plot),'plot sq ft'),
+    cell(ENGINE.ftIn(e.bw)+' × '+ENGINE.ftIn(e.bd),'buildable'),
+    cell(Math.round(e.foot),'footprint sq ft'),
+    cell(ENGINE.ftIn(sb.front)+' / '+ENGINE.ftIn(sb.rear)+' / '+ENGINE.ftIn(sb.side),'front / rear / side'),
+    cell(Math.round(maxFar),'far cap sq ft'),
+    cell(Math.round(e.foot*o.floors),'planned sq ft', (e.foot*o.floors>maxFar)?'bad':'good'),
+    cell(sb.rule,'rule applied')
+  ].join('');
+}
+function cell(b,s,cls){ return '<div class="cell"><b'+(cls?' class="'+cls+'"':'')+'>'+b+'</b><span>'+s+'</span></div>'; }
+
+function renderCards(){
+  $('#cards').innerHTML=state.schemes.map(function(s,i){
+    return '<div class="card'+(i===state.sel?' sel':'')+'" data-i="'+i+'">'+
+      drawPlan(s,0,true)+
+      '<div class="meta"><b>'+s.id+' · '+s.name+'</b>'+
+      '<span><em>'+s.built+'</em> sq ft built · <span class="'+(s.farOk?'':'flag')+'">FAR '+s.far.toFixed(2)+'</span></span>'+
+      '<span class="'+((s.warns||!s.farOk)?'flag':'')+'">'+
+        (!s.farOk ? 'over FAR by '+s.overBy+' sq ft' : (s.warns? s.warns+' tight space(s)' : 'all rooms clear min'))+'</span>'+
+      '</div></div>';
+  }).join('');
+  Array.prototype.forEach.call(document.querySelectorAll('.card'),function(c){
+    c.addEventListener('click',function(){ state.sel=+c.dataset.i; renderCards(); renderDetail(); });
+  });
+}
+function renderDetail(){
+  var s=state.schemes[state.sel];
+  $('#optName').textContent=s.id+' · '+s.name;
+  $('#optTag').textContent=s.tag;
+  var tabs=s.floors.map(function(f,i){return {label:f.name.replace(' Floor',''),k:'plan'+i};});
+  tabs.push({label:'3D',k:'3d'},{label:'Schedule',k:'sched'});
+  $('#tabs').innerHTML=tabs.map(function(t,i){
+    return '<button data-k="'+t.k+'" class="'+(i===state.tab?'on':'')+'">'+t.label+'</button>';
+  }).join('');
+  Array.prototype.forEach.call($('#tabs').children,function(b,i){
+    b.addEventListener('click',function(){ state.tab=i; showTab(b.dataset.k); renderDetail(); });
+  });
+  var k=tabs[Math.min(state.tab,tabs.length-1)].k;
+  showTab(k);
+  $('#paneSched').innerHTML=schedule(s);
+}
+function showTab(k){
+  var s=state.schemes[state.sel];
+  $('#panePlan').classList.toggle('on', k.indexOf('plan')===0);
+  $('#pane3d').classList.toggle('on', k==='3d');
+  $('#paneSched').classList.toggle('on', k==='sched');
+  if(k.indexOf('plan')===0) $('#planWrap').innerHTML=drawPlan(s,+k.slice(4),false);
+  if(k==='3d'){ build3d(s); setTimeout(size3d,30); }
+}
+function run(){
+  state.opts=readOpts();
+  state.schemes=ENGINE.generate(state.opts);
+  if(state.sel>=state.schemes.length) state.sel=0;
+  renderEnvelope(); renderCards(); renderDetail();
+  $('#seedlbl').textContent='seed '+String(state.seed+1).padStart(2,'0')+(state.flip?' · flipped':'');
+}
+$('#go').addEventListener('click',run);
+['iW','iD','iF','iB','iU'].forEach(function(id){ $('#'+id).addEventListener('change',run); });
+$('#btnSeed').addEventListener('click',function(){ state.seed=(state.seed+1)%9; run(); });
+$('#btnFlip').addEventListener('click',function(){ state.flip=!state.flip; run(); });
+$('#btnPrint').addEventListener('click',function(){ window.print(); });
+window.addEventListener('resize',size3d);
+run();
+})();
+</script>
+</body>
+</html>

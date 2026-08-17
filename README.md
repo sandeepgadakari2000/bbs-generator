@@ -7,6 +7,7 @@ structural grid, or drop the plan PDF.
 src/bbs.js       the detailing engine — bar lengths, schedules, cage, frame
 src/scheme.js    the planner — four partitions of a frame, plus its exterior
 src/plan.js      the plan reader — PDF in, reviewable parameters out
+src/loads.js     the load engine — loads, the load path, IS 456 Table 18
 test/            node --test
 test/fixtures/   PDFs built by test/make-fixtures.py, expected values known
 bbs.html         the viewer, both pages — one file, opens from the filesystem
@@ -55,6 +56,70 @@ guessed. They are recorded here because they change the steel quantity:
 
 The bend set for every shape lives in `CODE.shapes`, so a stirrup's
 `3 × 2d + 2 × 3d` deduction is never written at a call site.
+
+## Loads and the load path
+
+`src/loads.js` is the first half of a design engine: it works out what the frame
+carries and where the load goes. It computes **no moments and no shears** — that
+is `src/design.js` — and it runs **no frame analysis**, so every reaction in it
+is the statically determinate one and every result says so.
+
+```js
+slabLoad({ thicknessMm, occupancy, sdl })
+→ { deadKNPerM2, liveKNPerM2, serviceKNPerM2, factoredKNPerM2, derivation, assumptions }
+
+panelToBeams({ shortMm, longMm, thicknessMm, occupancy })
+→ { beams:[{ id, areaM2, shape, factoredKNPerM, derivation }×4], panel, closure }
+
+buildingLoads(frame(spec), { occupancy, wall, soil })
+→ { selfWeight, floors:[{ slab, panels, beams }], columns, footings, assumptions, notes }
+```
+
+Every constant lives in the `LOAD` object — unit weights from IS 875 Part 1,
+imposed loads from IS 875 Part 2, load factors from IS 456 Table 18 — and is
+read from there at call time, proven by a mutation test as `CODE` is.
+
+`buildingLoads()` is **the seam**. It is the one function that turns a frame plus
+an occupancy into member demands, and a stiffness solution (`src/solve.js`) is
+meant to replace the statics inside it without changing its signature, so the
+design engine never learns where its demands came from.
+
+### The closure check
+
+A two-way panel sheds to its four beams as triangles on the short edges and
+trapezoids on the long ones, at 45° from each corner. Those four areas sum to the
+panel *identically*, and both `panelShares()` and `panelToBeams()` assert it:
+
+```
+3.0 × 4.0 m panel, 9.188 kN/m² factored          = 110.25 kN
+2 × triangle  ½ × 3.0 × 1.5 = 2.25 m² → 20.67 kN each
+2 × trapezoid ½ × (4.0 + 1.0) × 1.5 = 3.75 m² → 34.45 kN each
+                                                  ──────────
+                                                   110.25 kN
+```
+
+If load vanishes in the distribution the test catches it. The equivalent UDL is
+**load**-equivalent — tributary load spread evenly over the span — not the
+moment-equivalent UDL of a triangular or trapezoidal load, and the result says
+which it is.
+
+### What it refuses
+
+An unlisted occupancy, a superimposed component with no value, a wall with no
+height, a cantilever with no named support, a member shape it cannot weigh, and
+soil overburden with no soil data. Each comes back as `{ refused: true, reason }`
+with the reason printed — never as a quiet zero or a borrowed neighbouring value.
+
+### Four rules that were decisions, not code values
+
+They are recorded here because each moves a number.
+
+| Rule | Decision |
+|---|---|
+| Double counting the slab over a beam | Panels are measured centre to centre of beams and the beam carries its **web** only, `D − Ds`. Together they count the frame's concrete exactly once. `LOAD.path.beamWebOnly = false` counts the flange strip twice. |
+| Beam end reactions | Half the line load to each end — exact statics for the symmetric tributary shapes here, **not** a continuity factor. No redistribution happens; `notes` says so on every result. |
+| Imposed-load reduction on columns | Not applied. IS 875 Part 2 cl 3.2 permits one on a column carrying several floors; assuming it is unconservative, so the full imposed load is carried down. |
+| Superimposed dead load | Floor finish 1.0 kN/m² is the only default, and it reports itself on `assumptions` as an assumption rather than a code value. False ceiling and services are opt-in. Roof imposed load is **not** in `LOAD.liveKNPerM2` and must be given per floor. |
 
 ## Architectural schemes (page 1)
 
@@ -220,3 +285,7 @@ value you supplied is the value that was used.
 
 Detailing constants follow common Indian practice. Verify against IS 2502,
 IS 456 and the project consultant's detailing note before site use.
+
+Design output is a preliminary check, not a structural design. It has not been
+verified against benchmark problems and is not fit for statutory submission.
+A qualified engineer must confirm every result.

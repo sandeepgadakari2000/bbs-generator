@@ -1,0 +1,2 @@
+# PDFs are binary — never let the CRLF filter touch them
+*.pdf binary

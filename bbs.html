@@ -204,6 +204,17 @@
   #planpane svg{display:block;width:100%;height:auto}
   #planpane table{background:var(--paper)}
 
+  #extwrap{position:relative;background:var(--paper);border:1px solid var(--rule);
+    height:min(60vh,460px);overflow:hidden;margin-top:10px}
+  #extcanvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+  #extcanvas:active{cursor:grabbing}
+  #extnote{position:absolute;left:12px;bottom:10px;right:12px;pointer-events:none;
+    font:500 8.5px/1.6 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--steel)}
+  #extkey{position:absolute;right:12px;top:11px;text-align:right;pointer-events:none;
+    font:500 8.5px/1.8 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--steel)}
+  #extkey b{color:var(--accent)}
+  #btnSpin.on{background:var(--accent);border-color:var(--accent);color:#fff}
+
   /* ---------- cage ---------- */
   #cagewrap{position:relative;background:var(--paper);border:1px solid var(--rule);
     height:min(58vh,430px);overflow:hidden}
@@ -271,8 +282,8 @@
     td .cut{border-bottom:0}
     .sec{padding:0 0 10px;break-inside:auto}
     #titleblock{margin-bottom:8px;break-inside:avoid}
-    #cagewrap{height:72mm;break-inside:avoid;border:1px solid var(--ink)}
-    #cagecanvas{max-width:100%}
+    #cagewrap,#extwrap{height:72mm;break-inside:avoid;border:1px solid var(--ink)}
+    #cagecanvas,#extcanvas{max-width:100%}
     .tablewrap{border:1px solid var(--ink);overflow:visible}
     table{font-size:7.6pt}
     th{padding:5px 6px}
@@ -352,6 +363,24 @@
   <div class="sechead" id="planhead" style="margin-top:14px"><h2 id="planName">—</h2><i></i><u id="planTag"></u></div>
   <div class="tabs noprint" id="plantabs"></div>
   <div id="planpane"></div>
+
+  <div class="sechead" style="margin-top:14px"><h2>Exterior</h2><i></i>
+    <u id="exthint">drag to spin · scroll to zoom</u></div>
+  <div class="tabs noprint" id="extviews">
+    <button data-x="spin" id="btnSpin">Spin 360°</button>
+    <button data-x="front" class="on">Front</button>
+    <button data-x="right">Right</button>
+    <button data-x="rear">Rear</button>
+    <button data-x="left">Left</button>
+    <button data-x="iso">Iso</button>
+    <button data-x="aerial">Aerial</button>
+    <button data-x="street">Eye level</button>
+  </div>
+  <div id="extwrap">
+    <canvas id="extcanvas"></canvas>
+    <div id="extkey"></div>
+    <div id="extnote"></div>
+  </div>
 </div>
 </div>
 
@@ -391,7 +420,6 @@
   <div class="tabs noprint" id="cagemode">
     <button data-m="building" class="on">Building</button>
     <button data-m="member">Member cage</button>
-    <button data-m="exterior">Exterior</button>
   </div>
   <div class="tabs noprint" id="cagemembers"></div>
   <div class="tabs noprint" id="cageviews">
@@ -3412,25 +3440,62 @@ function cageOf(){
 
 /* whichever model is on screen supplies the bounds the camera frames */
 function activeBounds(){
-  if (CG.mode === 'exterior')
-    return (PL.exterior && activePage === 'page1') ? PL.exterior.bounds : null;
   if (CG.mode === 'building')
     return state.assembly ? state.assembly.bounds : null;
   var m = cageOf();
   return (m && m.cage) ? m.cage.bounds : null;
 }
 
-function cageFrame(){
-  var b = activeBounds(); if (!b) return;
+function frameViewer(V){
+  var b = V.bounds ? V.bounds() : activeBounds();
+  if (!b) return;
   var lo = b.min, hi = b.max;
-  CG.target = [(lo[0]+hi[0])/2,(lo[1]+hi[1])/2,(lo[2]+hi[2])/2];
-  CG.span = Math.max(hi[0]-lo[0], hi[1]-lo[1], hi[2]-lo[2], 1);
-  CG.radius = CG.span * 1.85;
-  CG.zoom = 1;
+  V.target = [(lo[0]+hi[0])/2,(lo[1]+hi[1])/2,(lo[2]+hi[2])/2];
+  V.span = Math.max(hi[0]-lo[0], hi[1]-lo[1], hi[2]-lo[2], 1);
+  V.radius = V.span * 1.85;
+  V.zoom = 1;
+}
+function cageFrame(){ frameViewer(CG); }
+
+/* orbit, pinch and wheel for any viewer — one implementation, two canvases */
+function attachOrbit(V, cvs, draw){
+  var pts = new Map(), lastPinch = 0;
+  function zoomBy(f){
+    if (V.ortho) V.zoom = Math.min(6, Math.max(0.25, V.zoom / f));
+    else V.radius = Math.min(V.span*8, Math.max(V.span*0.5, V.radius * f));
+  }
+  cvs.addEventListener('pointerdown', function(e){
+    cvs.setPointerCapture(e.pointerId); pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  });
+  cvs.addEventListener('pointermove', function(e){
+    if (!pts.has(e.pointerId)) return;
+    var p=pts.get(e.pointerId), dx=e.clientX-p.x, dy=e.clientY-p.y;
+    p.x=e.clientX; p.y=e.clientY;
+    if (pts.size===1){
+      V.theta -= dx*0.007;
+      V.phi = Math.min(Math.PI-0.05, Math.max(0.05, V.phi - dy*0.006));
+      V.ortho = false;
+      V.view = 'orbit';
+      if (V.onOrbit) V.onOrbit();
+    } else {
+      var a=Array.from(pts.values()), d=Math.hypot(a[0].x-a[1].x, a[0].y-a[1].y);
+      if (lastPinch) zoomBy(1 - (d-lastPinch)*0.004);
+      lastPinch = d;
+    }
+    draw();
+  });
+  ['pointerup','pointercancel','pointerleave'].forEach(function(ev){
+    cvs.addEventListener(ev, function(e){ pts.delete(e.pointerId); if (pts.size<2) lastPinch=0; });
+  });
+  cvs.addEventListener('wheel', function(e){
+    e.preventDefault(); zoomBy(1 + e.deltaY*0.0012); draw();
+  }, {passive:false});
+  return { zoomBy: zoomBy };
 }
 
-function camBasis(){
-  var t=CG.target, R=CG.radius, ph=CG.phi, th=CG.theta;
+function camBasis(V){
+  V = V || CG;
+  var t=V.target, R=V.radius, ph=V.phi, th=V.theta;
   var eye=[t[0]+R*Math.sin(ph)*Math.sin(th), t[1]+R*Math.cos(ph), t[2]+R*Math.sin(ph)*Math.cos(th)];
   var f=norm(sub(t,eye));
   var up = Math.abs(f[1])>0.999 ? [0,0,-1] : [0,1,0];
@@ -3440,24 +3505,27 @@ function camBasis(){
 
 /* fit the concrete's eight corners to the frame — used for the
    orthographic elevation, section and plan */
-function fitScale(B){
-  var b=activeBounds(); if(!b) return 1;
+function fitScale(B, V){
+  V = V || CG;
+  var b = V.bounds ? V.bounds() : activeBounds();
+  if(!b) return 1;
   var lo=b.min, hi=b.max, ex=0, ey=0;
   for (var i=0;i<8;i++){
     var d=sub([(i&1)?hi[0]:lo[0], (i&2)?hi[1]:lo[1], (i&4)?hi[2]:lo[2]], B.eye);
     ex=Math.max(ex,Math.abs(dot(d,B.r))); ey=Math.max(ey,Math.abs(dot(d,B.u)));
   }
-  return Math.min(CG.w*0.44/(ex||1), CG.h*0.42/(ey||1)) * CG.zoom;
+  return Math.min(V.w*0.44/(ex||1), V.h*0.42/(ey||1)) * V.zoom;
 }
 
-function makeProject(B, scale){
-  var focal = (CG.h/2)/Math.tan(0.33);
+function makeProject(B, scale, V){
+  V = V || CG;
+  var focal = (V.h/2)/Math.tan(0.33);
   return function(p){
     var d=sub(p,B.eye);
     var x=dot(d,B.r), y=dot(d,B.u), z=dot(d,B.f);
-    if (CG.ortho) return [CG.w/2 + x*scale, CG.h/2 - y*scale, z, scale];
-    if (z < CG.span*0.05) return null;
-    return [CG.w/2 + focal*x/z, CG.h/2 - focal*y/z, z, focal/z];
+    if (V.ortho) return [V.w/2 + x*scale, V.h/2 - y*scale, z, scale];
+    if (z < V.span*0.05) return null;
+    return [V.w/2 + focal*x/z, V.h/2 - focal*y/z, z, focal/z];
   };
 }
 
@@ -3481,9 +3549,10 @@ function cageSize(){
 }
 
 /* a datum grid, so an orbit has something to read the model against */
-function groundGrid(B, P, bounds, atY){
-  if (CG.ortho) return;
-  var ctx=CG.ctx, lo=bounds.min, hi=bounds.max, pad=CG.span*0.28, steps=6;
+function groundGrid(B, P, bounds, atY, V){
+  V = V || CG;
+  if (V.ortho) return;
+  var ctx=V.ctx, lo=bounds.min, hi=bounds.max, pad=V.span*0.28, steps=6;
   ctx.strokeStyle='rgba(182,188,185,.55)'; ctx.lineWidth=1;
   function seg(a,b){
     if(!a||!b) return;
@@ -3583,50 +3652,6 @@ var EXT_TONE = {
   wall:    { accent: false, base: 0.05, range: 0.30 }
 };
 
-function exteriorDraw(B, P){
-  var ctx = CG.ctx, ex = PL.exterior;
-  if (!ex || activePage !== 'page1'){
-    ctx.fillStyle = 'rgba(20,23,26,.45)';
-    ctx.font = '500 11px ui-monospace,Menlo,Consolas,monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText('Pick an architectural scheme on page 1 to see it from outside.',
-                 CG.w/2, CG.h/2);
-    ctx.textAlign = 'left';
-    return;
-  }
-  var faces = [];
-  ex.parts.forEach(function(part){
-    var tone = EXT_TONE[part.kind] || EXT_TONE.wall;
-    part.faces.forEach(function(f){
-      var cen = mid(f.v);
-      if (dot(f.n, sub(B.eye, cen)) <= 0) return;          // back face
-      var pts = f.v.map(P);
-      if (pts.some(function(q){ return !q; })) return;
-      var lum = 0.4 + 0.6*Math.max(0, dot(f.n, LIGHT));
-      faces.push({ pts: pts, z: mid(f.v.map(function(v,k){ return pts[k]; }))[2],
-                   lum: lum, tone: tone });
-    });
-  });
-  faces.sort(function(a,b){ return b.z - a.z; });
-  faces.forEach(function(f){
-    var a = f.tone.base + (1 - f.lum) * f.tone.range;
-    ctx.fillStyle = f.tone.accent ? 'rgba(224,123,30,'+a.toFixed(3)+')'
-                                  : 'rgba(20,23,26,'+a.toFixed(3)+')';
-    ctx.strokeStyle = 'rgba(20,23,26,.34)';
-    ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(f.pts[0][0], f.pts[0][1]);
-    for (var i=1;i<f.pts.length;i++) ctx.lineTo(f.pts[i][0], f.pts[i][1]);
-    ctx.closePath(); ctx.fill(); ctx.stroke();
-  });
-
-  var s = PL.list[PL.sel] || {};
-  $('#cagenote').textContent = (s.id||'') + ' · ' + (s.name||'') + ' · ' +
-    s.widthMm + ' × ' + s.depthMm + ' mm · ' + ex.floors + ' floor(s) · ridge ' +
-    ex.ridgeMm + ' mm · ' + CG.view;
-  $('#cagekey').innerHTML = '<b>' + esc(ex.facade) + '</b> facade<br>' +
-    (s.builtSqft||0) + ' sq ft built<br>street side is +Z';
-}
-
 function cageDraw(){
   if (!CG.ctx) return;
   /* the canvas may have been sized while the results block was hidden, or
@@ -3636,15 +3661,6 @@ function cageDraw(){
   if (host && host.clientWidth &&
       (CG.w !== host.clientWidth || CG.h !== host.clientHeight)) cageSize();
   if (!CG.w || !CG.h) return;
-  if (CG.mode === 'exterior'){
-    var ctxE = CG.ctx;
-    ctxE.clearRect(0,0,CG.w,CG.h);
-    ctxE.fillStyle = '#fff'; ctxE.fillRect(0,0,CG.w,CG.h);
-    var BE = camBasis(), sE = CG.ortho ? fitScale(BE) : 0;
-    if (PL.exterior) groundGrid(BE, makeProject(BE,sE), PL.exterior.bounds, 0);
-    exteriorDraw(BE, makeProject(BE,sE));
-    return;
-  }
   if (CG.mode === 'building'){
     var ctxB=CG.ctx;
     ctxB.clearRect(0,0,CG.w,CG.h);
@@ -3740,8 +3756,6 @@ function cageDraw(){
 function renderCageTabs(){
   if (!state.out) return;
   $('#cagemembers').style.display = (CG.mode==='member') ? '' : 'none';
-  var extBtn = $('#cagemode').querySelector('[data-m="exterior"]');
-  if (extBtn) extBtn.style.display = (activePage === 'page1' && PL.exterior) ? '' : 'none';
   $('#cagemembers').innerHTML = state.out.members.map(function(m,i){
     return '<button data-m="'+i+'"'+(i===CG.member?' class="on"':'')+'>'+esc(m.id)+'</button>';
   }).join('');
@@ -3936,9 +3950,10 @@ function selectScheme(i){
   }).join('');
   showPlanTab(tabs[Math.min(PL.tab, tabs.length-1)].k);
   renderPlanCards();
-  renderCageTabs();
-  if (CG.mode === 'exterior') cageFrame();
-  cageDraw();
+  frameViewer(XV);
+  if (!XV.view || XV.view === 'orbit') XV.view = 'iso';
+  markExtView(XV.spin ? null : XV.view);
+  extSize(); extDraw();
 }
 
 function showPlanTab(k){
@@ -3970,6 +3985,144 @@ function showPlanTab(k){
            '. Widen the grid, reduce bedrooms, or add a floor.</div>');
   $('#planpane').innerHTML = h.join('');
 }
+
+/* ---- the exterior, on its own canvas beside the plans ---------------
+   Its own camera, so spinning the building never disturbs the frame or
+   cage view above, plus a turntable for a real walk-around.
+   ------------------------------------------------------------------- */
+var XV = {
+  theta:Math.PI-0.62, phi:1.06, radius:1, zoom:1, target:[0,0,0], span:1,
+  view:'iso', ortho:false, w:0, h:0, ctx:null, spin:false, raf:0,
+  bounds: function(){ return PL.exterior ? PL.exterior.bounds : null; },
+  onOrbit: function(){ stopSpin(); markExtView(null); }
+};
+
+function extSize(){
+  var cvs=$('#extcanvas'), box=$('#extwrap');
+  if (!cvs||!box) return;
+  var dpr=Math.min(window.devicePixelRatio||1, 2);
+  XV.w=box.clientWidth; XV.h=box.clientHeight;
+  if (!XV.w || !XV.h) return;
+  cvs.width=Math.round(XV.w*dpr); cvs.height=Math.round(XV.h*dpr);
+  XV.ctx=cvs.getContext('2d');
+  XV.ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+
+function extDraw(){
+  var box=$('#extwrap');
+  if (box && box.clientWidth && (XV.w!==box.clientWidth || XV.h!==box.clientHeight)) extSize();
+  if (!XV.ctx || !XV.w || !XV.h) return;
+  var ctx=XV.ctx;
+  ctx.clearRect(0,0,XV.w,XV.h);
+  ctx.fillStyle='#fff'; ctx.fillRect(0,0,XV.w,XV.h);
+  var ex = PL.exterior;
+  if (!ex){
+    ctx.fillStyle='rgba(20,23,26,.45)';
+    ctx.font='500 11px ui-monospace,Menlo,Consolas,monospace';
+    ctx.textAlign='center';
+    ctx.fillText('Pick a scheme above to see it from outside.', XV.w/2, XV.h/2);
+    ctx.textAlign='left';
+    return;
+  }
+  var B = camBasis(XV), scale = XV.ortho ? fitScale(B, XV) : 0;
+  var P = makeProject(B, scale, XV);
+  groundGrid(B, P, ex.bounds, 0, XV);
+
+  var faces=[];
+  ex.parts.forEach(function(part){
+    var tone = EXT_TONE[part.kind] || EXT_TONE.wall;
+    part.faces.forEach(function(f){
+      var cen = mid(f.v);
+      if (dot(f.n, sub(B.eye, cen)) <= 0) return;
+      var pts = f.v.map(P);
+      if (pts.some(function(q){ return !q; })) return;
+      var lum = 0.4 + 0.6*Math.max(0, dot(f.n, LIGHT));
+      var z = 0;
+      pts.forEach(function(q){ z += q[2]; });
+      faces.push({ pts:pts, z:z/pts.length, lum:lum, tone:tone });
+    });
+  });
+  faces.sort(function(a,b){ return b.z-a.z; });
+  faces.forEach(function(f){
+    var a = f.tone.base + (1-f.lum)*f.tone.range;
+    ctx.fillStyle = f.tone.accent ? 'rgba(224,123,30,'+a.toFixed(3)+')'
+                                  : 'rgba(20,23,26,'+a.toFixed(3)+')';
+    ctx.strokeStyle = 'rgba(20,23,26,.34)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(f.pts[0][0], f.pts[0][1]);
+    for (var i=1;i<f.pts.length;i++) ctx.lineTo(f.pts[i][0], f.pts[i][1]);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+  });
+
+  var s = PL.list[PL.sel] || {};
+  /* bearing measured from the street elevation, so a spin reads
+     front → right → rear → left as 0° → 90° → 180° → 270° */
+  var deg = (((Math.PI - XV.theta) * 180/Math.PI) % 360 + 360) % 360;
+  $('#extnote').textContent = (s.id||'') + ' \u00b7 ' + (s.name||'') + ' \u00b7 ' +
+    s.widthMm + ' \u00d7 ' + s.depthMm + ' mm \u00b7 ' + ex.floors + ' floor(s) \u00b7 ridge ' +
+    ex.ridgeMm + ' mm \u00b7 bearing ' + Math.round(deg) + '\u00b0';
+  $('#extkey').innerHTML = '<b>' + esc(ex.facade) + '</b> facade<br>' +
+    (s.builtSqft||0) + ' sq ft built<br>' + (XV.spin ? 'spinning' : esc(XV.view||'orbit'));
+}
+
+/* ---- 360 turntable ---- */
+function stopSpin(){
+  XV.spin = false;
+  if (XV.raf) { cancelAnimationFrame(XV.raf); XV.raf = 0; }
+  var b = $('#btnSpin'); if (b) b.classList.remove('on');
+}
+function startSpin(){
+  if (XV.spin) return;
+  XV.spin = true; XV.ortho = false;
+  $('#btnSpin').classList.add('on');
+  var last = 0;
+  (function loop(ts){
+    if (!XV.spin) return;
+    /* stop burning frames when the section scrolls out of sight */
+    var box = $('#extwrap'), r = box ? box.getBoundingClientRect() : null;
+    var seen = r && r.bottom > 0 && r.top < window.innerHeight && box.clientWidth;
+    if (seen){
+      /* clamp the step: rAF is paused while the tab is hidden, so the first
+         frame back carries a huge delta and the building would lurch */
+      if (last) XV.theta -= Math.min(ts - last, 64) * 0.00022;   // a lap in about 28 s
+      extDraw();
+    }
+    last = ts;
+    XV.raf = requestAnimationFrame(loop);
+  })(0);
+}
+function markExtView(x){
+  Array.prototype.forEach.call($('#extviews').children, function(b){
+    if (b.dataset.x === 'spin') return;
+    b.classList.toggle('on', b.dataset.x === x);
+  });
+}
+/* The street face is the LOW z end of the massing, so the camera has to
+   sit at negative z to look at it — eye_z = target_z + R·sinφ·cosθ, which
+   means cosθ < 0, i.e. theta = π. Read off the geometry rather than
+   guessed: getting this backwards pointed "Front" at the rear wall.  */
+var EXT_VIEWS = {
+  front:  { theta: Math.PI,      phi: 1.16 },   // the street elevation
+  right:  { theta: Math.PI/2,    phi: 1.16 },   // the x = width face
+  rear:   { theta: 0,            phi: 1.16 },
+  left:   { theta: -Math.PI/2,   phi: 1.16 },   // the x = 0 face
+  iso:    { theta: Math.PI-0.62, phi: 1.06 },   // street and right, over the porch
+  aerial: { theta: Math.PI-0.62, phi: 0.52 },
+  street: { theta: Math.PI-0.20, phi: 1.47 }    // standing on the road
+};
+function setExtView(x){
+  var v = EXT_VIEWS[x]; if (!v) return;
+  stopSpin();
+  XV.theta = v.theta; XV.phi = v.phi; XV.ortho = false; XV.view = x;
+  frameViewer(XV); markExtView(x); extDraw();
+}
+$('#extviews').addEventListener('click', function(e){
+  var b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.x === 'spin'){ if (XV.spin) stopSpin(); else startSpin(); extDraw(); return; }
+  setExtView(b.dataset.x);
+});
+attachOrbit(XV, $('#extcanvas'), extDraw);
+window.addEventListener('resize', function(){ extSize(); extDraw(); });
 
 $('#plancards').addEventListener('click', function(e){
   var c = e.target.closest('.pcard');
@@ -4578,18 +4731,8 @@ function showPage(id){
   var slot = $(id === 'page1' ? '#slot1' : '#slot2');
   slot.appendChild($('#results'));
   showResults();
-  /* the exterior belongs to page 1's scheme, so only offer it there */
-  var extBtn = $('#cagemode').querySelector('[data-m="exterior"]');
-  if (extBtn){
-    var ok = (id === 'page1' && PL.exterior);
-    extBtn.style.display = ok ? '' : 'none';
-    if (!ok && CG.mode === 'exterior'){
-      CG.mode = 'building';
-      Array.prototype.forEach.call($('#cagemode').children, function(x){
-        x.classList.toggle('on', x.dataset.m === 'building');
-      });
-    }
-  }
+  /* the exterior spins on page 1; no sense burning frames off it */
+  if (id !== 'page1') stopSpin();
   if (state.out) rerender();
   cageSize(); cageFrame(); cageDraw();
 }

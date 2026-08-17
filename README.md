@@ -81,10 +81,19 @@ scheme reports `tight` and names the spaces, and the packer leaves the room at
 the size the envelope actually allows.
 
 The exterior is explicit quads with outward normals rather than boxes, so a
-skillion roof is as easy as a wall. It renders through the same camera as the
-frame and the cage, which means Iso / Elevation / Section / Plan work on it too.
-It is drawn in this repo's ink and accent — not the prototype's greens and
-blues, since CLAUDE.md pins the palette.
+skillion roof is as easy as a wall. It is drawn in this repo's ink and accent —
+not the prototype's greens and blues, since CLAUDE.md pins the palette.
+
+It sits on **its own canvas directly under the plans**, with its own camera, so
+spinning the building never disturbs the frame or cage view further up the page.
+Controls are Front / Right / Rear / Left / Iso / Aerial / Eye level plus a
+**Spin 360°** turntable, and dragging cancels the spin. The bearing readout is
+measured from the street elevation, so a lap reads 0° → 90° → 180° → 270°.
+
+Which way is the street matters here: the massing puts it at the LOW z end, so
+the camera has to sit at negative z to look at it. Deriving those angles from
+the geometry rather than guessing was the difference between "Front" showing the
+facade and showing the back wall.
 
 ## Page 2 — reading a plan PDF
 
